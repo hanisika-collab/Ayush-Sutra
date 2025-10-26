@@ -11,15 +11,18 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
 
+import { useNavigate } from "react-router-dom"; // ✅ Import useNavigate
+
 // Status colors for events
 const statusColors = {
-  scheduled: "#0d6efd", // blue
-  ongoing: "#fd7e14",   // orange
-  completed: "#198754", // green
-  cancelled: "#dc3545", // red
+  scheduled: "#0d6efd",
+  ongoing: "#fd7e14",
+  completed: "#198754",
+  cancelled: "#dc3545",
 };
 
 const TherapySessions = () => {
+  const navigate = useNavigate(); // ✅ Initialize navigation
   const [sessions, setSessions] = useState([]);
   const [patients, setPatients] = useState([]);
   const [therapists, setTherapists] = useState([]);
@@ -37,7 +40,6 @@ const TherapySessions = () => {
     notes: "",
   });
 
-  // Fetch data
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -50,7 +52,7 @@ const TherapySessions = () => {
 
       const headers = { Authorization: `Bearer ${token}` };
       const [sessionsRes, patientsRes, therapistsRes, roomsRes] = await Promise.all([
-        API.get("/sessions", { headers }),
+        API.get("/procedures", { headers }),
         API.get("/admin/users?role=patient", { headers }),
         API.get("/admin/users?role=therapist", { headers }),
         API.get("/admin/rooms", { headers }),
@@ -72,9 +74,7 @@ const TherapySessions = () => {
     fetchData();
   }, []);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -83,13 +83,10 @@ const TherapySessions = () => {
 
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Missing authentication token");
-        return;
-      }
+      if (!token) return setError("Missing authentication token");
 
       const headers = { Authorization: `Bearer ${token}` };
-      await API.post("/sessions", form, { headers });
+      await API.post("/procedures", form, { headers });
 
       setForm({
         patientId: "",
@@ -109,9 +106,15 @@ const TherapySessions = () => {
     }
   };
 
+  // ✅ New: Navigate to ProcedureTracker page
+  const handleViewDetails = (sessionId) => {
+    navigate(`/procedure-tracker/${sessionId}`);
+  };
+
+  // ✅ FullCalendar event click also navigates
   const handleEventClick = (info) => {
-    const s = info.event.extendedProps;
-    alert(`Patient: ${s.patient}\nTherapist: ${s.therapist}\nRoom: ${s.room}\nNotes: ${s.notes}`);
+    const sessionId = info.event.id;
+    handleViewDetails(sessionId);
   };
 
   if (loading) return <Spinner animation="border" className="m-5" />;
@@ -130,6 +133,7 @@ const TherapySessions = () => {
             {success && <Alert variant="success">{success}</Alert>}
             {error && <Alert variant="danger">{error}</Alert>}
             <Form onSubmit={handleSubmit}>
+              {/* Patient */}
               <Form.Group className="mb-2">
                 <Form.Label>Patient</Form.Label>
                 <Form.Select name="patientId" value={form.patientId} onChange={handleChange} required>
@@ -138,6 +142,7 @@ const TherapySessions = () => {
                 </Form.Select>
               </Form.Group>
 
+              {/* Therapist */}
               <Form.Group className="mb-2">
                 <Form.Label>Therapist</Form.Label>
                 <Form.Select name="therapistId" value={form.therapistId} onChange={handleChange} required>
@@ -146,6 +151,7 @@ const TherapySessions = () => {
                 </Form.Select>
               </Form.Group>
 
+              {/* Room */}
               <Form.Group className="mb-2">
                 <Form.Label>Room</Form.Label>
                 <Form.Select name="roomId" value={form.roomId} onChange={handleChange} required>
@@ -154,6 +160,7 @@ const TherapySessions = () => {
                 </Form.Select>
               </Form.Group>
 
+              {/* Therapy Type */}
               <Form.Group className="mb-2">
                 <Form.Label>Therapy Type</Form.Label>
                 <Form.Select name="therapyType" value={form.therapyType} onChange={handleChange} required>
@@ -165,6 +172,7 @@ const TherapySessions = () => {
                 </Form.Select>
               </Form.Group>
 
+              {/* Start / End Time */}
               <Form.Group className="mb-2">
                 <Form.Label>Start Time</Form.Label>
                 <Form.Control type="datetime-local" name="startTime" value={form.startTime} onChange={handleChange} required />
@@ -175,6 +183,7 @@ const TherapySessions = () => {
                 <Form.Control type="datetime-local" name="endTime" value={form.endTime} onChange={handleChange} required />
               </Form.Group>
 
+              {/* Notes */}
               <Form.Group className="mb-2">
                 <Form.Label>Notes</Form.Label>
                 <Form.Control type="text" name="notes" value={form.notes} onChange={handleChange} />
@@ -227,8 +236,11 @@ const TherapySessions = () => {
                     borderRadius: "8px",
                     boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                     color: "#fff",
-                    fontSize: "0.85rem"
-                  }}>
+                    fontSize: "0.85rem",
+                    cursor: "pointer"
+                  }}
+                  onClick={() => handleViewDetails(eventInfo.event.id)} // ✅ Clickable card
+                  >
                     <strong>{eventInfo.event.title}</strong>
                     <div>{eventInfo.event.extendedProps.patient}</div>
                     <Badge bg={
@@ -242,10 +254,10 @@ const TherapySessions = () => {
                   </div>
                 </OverlayTrigger>
               )}
-              eventClick={(info) => handleEventClick(info)}
+              eventClick={handleEventClick}
               height={650}
               nowIndicator={true}
-              editable={false} // you can enable drag-drop if you implement conflict check
+              editable={false}
             />
           </Card>
         </Container>

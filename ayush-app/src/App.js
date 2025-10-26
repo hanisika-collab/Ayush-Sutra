@@ -39,7 +39,7 @@ function App() {
 
         {/* Procedure Tracker & Details */}
         {/* Dynamic sessionId for Procedure Tracker */}
-        <Route path="/procedure-tracker/:sessionId" element={<ProcedureTracker />} />
+        <Route path="/procedure-tracker" element={<ProcedureTracker />} />
         <Route path="/procedure-details/:id" element={<ProcedureDetails />} />
 
         {/* Prescriptions */}

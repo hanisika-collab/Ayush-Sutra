@@ -15,8 +15,9 @@ const usersRoutes = require('./routes/admin/users');
 const roomsRoutes = require('./routes/rooms'); // Therapy Rooms
 const patientRoutes = require("./routes/Patients");
 const prescriptionRoutes = require("./routes/Prescriptions");
-const Sessions = require("./routes/sessions");
-const procedureRoutes = require("./routes/procedureRoutes"); // ✅ Procedure Tracking
+const therapySessionRoutes = require("./routes/therapySessionRoutes");
+const procedureRoutes = require("./routes/procedureRoutes");
+ // ✅ Procedure Tracking
 
 // Create express app
 const app = express();
@@ -110,9 +111,9 @@ app.use("/api/admin/therapists", require("./routes/admin/therapists"));
 // Patients, Prescriptions, Sessions, Procedures
 app.use('/api/patients', patientRoutes);
 app.use("/api/prescriptions", prescriptionRoutes);
-app.use("/api/sessions", Sessions);
-app.use("/api/procedures", procedureRoutes); // ✅ Procedure Tracking
-
+// app.use("/api/sessions", Sessions);
+app.use("/api/therapy-sessions", therapySessionRoutes);
+app.use("/api/procedures", procedureRoutes);
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
