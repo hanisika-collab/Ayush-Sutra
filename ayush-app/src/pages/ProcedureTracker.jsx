@@ -1,31 +1,46 @@
+// src/pages/ProcedureTracker.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { Card, Form, Button, ProgressBar, Spinner, Alert } from "react-bootstrap";
+import { Card, Form, Button, ProgressBar, Spinner, Alert, Collapse, Row, Col, Badge } from "react-bootstrap";
 import API from "../api";
 import io from "socket.io-client";
+import { useParams } from "react-router-dom";
 
-const socket = io("http://localhost:4000");
+const socket = io("http://localhost:4000"); // adjust if needed
+
+const AYURVEDIC_PROCEDURES = [
+  "Abhyanga",
+  "Swedana",
+  "Pizhichil",
+  "Shirodhara",
+  "Udvartana",
+  "Nasya",
+  "Virechana",
+  "Basti",
+];
 
 export default function ProcedureTracker() {
+  const { id: urlId } = useParams();
   const [procedures, setProcedures] = useState([]);
-  const [selectedProcedure, setSelectedProcedure] = useState(null);
+  const [selectedId, setSelectedId] = useState(urlId || "");
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [vitals, setVitals] = useState({ heartRate: "", bloodPressure: "", temperature: "" });
-  const [updatingStep, setUpdatingStep] = useState(false);
-  const [addingVitals, setAddingVitals] = useState(false);
   const [alert, setAlert] = useState({ show: false, message: "", variant: "danger" });
-  const timersRef = useRef({});
+  const [addStepName, setAddStepName] = useState("");
+  const [expandedSteps, setExpandedSteps] = useState({});
+  const timersRef = useRef({}); // stepId -> interval
   const [totalElapsed, setTotalElapsed] = useState(0);
 
-  // Fetch procedures
   const fetchProcedures = async () => {
     try {
       setLoading(true);
       const res = await API.get("/procedures");
-      setProcedures(res.data);
-      // Keep selectedProcedure updated
-      if (selectedProcedure) {
-        const updated = res.data.find(p => p._id === selectedProcedure._id);
-        setSelectedProcedure(updated || null);
+      setProcedures(res.data || []);
+      if (urlId && !selected && Array.isArray(res.data)) {
+        const found = res.data.find(p => p._id === urlId);
+        if (found) setSelectedId(urlId);
+      } else if (selectedId) {
+        const found = (res.data || []).find(p => p._id === selectedId);
+        setSelected(found || null);
       }
     } catch (err) {
       console.error(err);
@@ -37,278 +52,289 @@ export default function ProcedureTracker() {
 
   useEffect(() => {
     fetchProcedures();
-    socket.on("refreshProcedures", fetchProcedures);
-
+    socket.on("procedureUpdated", fetchProcedures);
     return () => {
-      socket.off("refreshProcedures", fetchProcedures);
+      socket.off("procedureUpdated", fetchProcedures);
       Object.values(timersRef.current).forEach(clearInterval);
     };
+    // eslint-disable-next-line
   }, []);
 
-  // Reset timers when selectedProcedure changes
+  useEffect(() => {
+    if (!selectedId) { setSelected(null); return; }
+    const proc = procedures.find(p => p._id === selectedId);
+    setSelected(proc || null);
+  }, [selectedId, procedures]);
+
   useEffect(() => {
     Object.values(timersRef.current).forEach(clearInterval);
     timersRef.current = {};
     setTotalElapsed(0);
-
-    if (selectedProcedure?.steps?.length) {
-      selectedProcedure.steps.forEach((step, index) => {
-        if (step.status === "in-progress") startStepTimer(index, step.elapsed || 0);
-      });
+    if (selected?.steps?.length) {
+      const activeStep = selected.steps.find(s => s.status === "in-progress");
+      if (activeStep) setExpandedSteps({ [activeStep._id]: true });
+      selected.steps.forEach(s => { if (s.status === "in-progress") startTimer(s._id, s.elapsed || 0); });
     }
-  }, [selectedProcedure]);
+    // eslint-disable-next-line
+  }, [selected]);
 
-  // Update step status
-  const updateStep = async (stepIndex, status) => {
-    if (!selectedProcedure) return;
-    try {
-      setUpdatingStep(true);
-
-      setProcedures(prev =>
-        prev.map(proc => {
-          if (proc._id === selectedProcedure._id) {
-            const updatedSteps = proc.steps?.map((s, i) =>
-              i === stepIndex ? { ...s, status, elapsed: s.elapsed || 0 } : s
-            ) || [];
-            return { ...proc, steps: updatedSteps };
-          }
-          return proc;
-        })
-      );
-
-      await API.put(`/procedures/${selectedProcedure._id}/step`, { stepIndex, status });
-
-      if (status === "in-progress") startStepTimer(stepIndex);
-      else stopStepTimer(stepIndex, false);
-
-      fetchProcedures();
-    } catch (err) {
-      console.error(err);
-      setAlert({ show: true, message: "Error updating step", variant: "danger" });
-    } finally {
-      setUpdatingStep(false);
-    }
+  const formatTime = sec => {
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
-  // Timers
-  const startStepTimer = (index, initial = 0) => {
-    if (timersRef.current[index]) return;
-
-    timersRef.current[index] = setInterval(() => {
-      setProcedures(prev =>
-        prev.map(proc => {
-          if (proc._id === selectedProcedure?._id) {
-            const updatedSteps = proc.steps?.map((s, i) => {
-              if (i === index) {
-                const newElapsed = (s.elapsed || initial) + 1;
-                setTotalElapsed(prev => prev + 1);
-                return { ...s, elapsed: newElapsed };
-              }
-              return s;
-            }) || [];
-            return { ...proc, steps: updatedSteps };
-          }
-          return proc;
-        })
-      );
-    }, 1000);
-  };
-
-  const stopStepTimer = (index, reset = false) => {
-    clearInterval(timersRef.current[index]);
-    delete timersRef.current[index];
-
-    if (reset && selectedProcedure?.steps?.length) {
-      setProcedures(prev =>
-        prev.map(proc => {
-          if (proc._id === selectedProcedure._id) {
-            const updatedSteps = proc.steps.map((s, i) =>
-              i === index ? { ...s, elapsed: 0, status: "pending" } : s
-            );
-            return { ...proc, steps: updatedSteps };
-          }
-          return proc;
-        })
-      );
-    }
-  };
-
-  // Add vitals
-  const handleVitalsSubmit = async () => {
-    if (!selectedProcedure) return;
-    try {
-      setAddingVitals(true);
-      await API.post(`/procedures/${selectedProcedure._id}/vitals`, vitals);
-      setVitals({ heartRate: "", bloodPressure: "", temperature: "" });
-      fetchProcedures();
-      setAlert({ show: true, message: "Vitals added successfully", variant: "success" });
-    } catch (err) {
-      console.error(err);
-      setAlert({ show: true, message: "Error adding vitals", variant: "danger" });
-    } finally {
-      setAddingVitals(false);
-    }
-  };
-
-  // Complete procedure
-  const completeProcedure = async () => {
-    if (!selectedProcedure) return;
-
-    try {
-      setUpdatingStep(true);
-      setProcedures(prev =>
-        prev.map(proc =>
-          proc._id === selectedProcedure._id ? { ...proc, status: "completed" } : proc
-        )
-      );
-
-      Object.values(timersRef.current).forEach(clearInterval);
-      timersRef.current = {};
-
-      await API.put(`/procedures/${selectedProcedure._id}/complete`);
-      setAlert({ show: true, message: "Procedure marked as completed!", variant: "success" });
-      fetchProcedures();
-    } catch (err) {
-      console.error(err);
-      setAlert({ show: true, message: "Error completing procedure", variant: "danger" });
-    } finally {
-      setUpdatingStep(false);
-    }
-  };
-
-  // Helpers
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const calculateProgress = (steps) => {
+  const calculateProgress = steps => {
     if (!Array.isArray(steps) || steps.length === 0) return 0;
     const completed = steps.filter(s => s.status === "completed").length;
     return Math.round((completed / steps.length) * 100);
   };
 
-  const current = procedures.find(p => p._id === selectedProcedure?._id);
+  // ---------------- Timers ----------------
+  const startTimer = (stepId, initial = 0) => {
+    if (timersRef.current[stepId]) return;
+    timersRef.current[stepId] = setInterval(() => {
+      setSelected(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        updated.steps = updated.steps.map(st =>
+          st._id === stepId ? { ...st, elapsed: (st.elapsed || initial) + 1 } : st
+        );
+        return updated;
+      });
+      setTotalElapsed(t => t + 1);
+    }, 1000);
+  };
+
+  const stopTimer = (stepId, reset = false) => {
+    clearInterval(timersRef.current[stepId]);
+    delete timersRef.current[stepId];
+    if (reset) {
+      setSelected(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        updated.steps = updated.steps.map(st =>
+          st._id === stepId ? { ...st, elapsed: 0, status: "pending" } : st
+        );
+        return updated;
+      });
+    }
+  };
+
+  // ---------------- Step/Vitals handlers ----------------
+  const handleAddStep = async () => {
+    if (!selected) return setAlert({ show: true, message: "Select a procedure first", variant: "danger" });
+    if (!addStepName) return setAlert({ show: true, message: "Choose a procedure to add", variant: "danger" });
+
+    try {
+      const res = await API.post(`/procedures/${selected._id}/add-step`, { stepName: addStepName });
+      setAddStepName("");
+      setAlert({ show: true, message: "Step added", variant: "success" });
+      fetchProcedures();
+      socket.emit?.("procedureUpdated", { id: selected._id });
+    } catch (err) {
+      console.error(err);
+      setAlert({ show: true, message: "Failed to add step", variant: "danger" });
+    }
+  };
+
+  const handleUpdateStep = async (stepId, newStatus) => {
+    if (!selected) return;
+    try {
+      await API.put(`/procedures/${selected._id}/step/${stepId}`, { status: newStatus });
+
+      // Update locally
+      setSelected(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        updated.steps = updated.steps.map(st =>
+          st._id === stepId ? {
+            ...st,
+            status: newStatus,
+            startTime: newStatus === "in-progress" ? new Date() : st.startTime,
+            endTime: newStatus === "completed" ? new Date() : st.endTime
+          } : st
+        );
+        return updated;
+      });
+
+      if (newStatus === "in-progress") startTimer(stepId);
+      else stopTimer(stepId);
+
+      socket.emit?.("procedureUpdated", { id: selected._id });
+    } catch (err) {
+      console.error(err);
+      setAlert({ show: true, message: "Failed to update step", variant: "danger" });
+    }
+  };
+
+  const handleAddVitals = async (vitals) => {
+    if (!selected) return;
+    try {
+      await API.post(`/procedures/${selected._id}/vitals`, vitals);
+      fetchProcedures();
+      setAlert({ show: true, message: "Vitals recorded", variant: "success" });
+      socket.emit?.("procedureUpdated", { id: selected._id });
+    } catch (err) {
+      console.error(err);
+      setAlert({ show: true, message: "Failed to record vitals", variant: "danger" });
+    }
+  };
+
+  const handleCompleteProcedure = async () => {
+    if (!selected) return;
+    try {
+      await API.put(`/procedures/${selected._id}/complete`);
+      fetchProcedures();
+      setAlert({ show: true, message: "Procedure completed", variant: "success" });
+      socket.emit?.("procedureUpdated", { id: selected._id, action: "complete" });
+      setSelectedId("");
+    } catch (err) {
+      console.error(err);
+      setAlert({ show: true, message: "Failed to complete procedure", variant: "danger" });
+    }
+  };
+
+  const activeList = procedures.filter(p => p.status !== "completed");
+  const completedList = procedures.filter(p => p.status === "completed");
 
   return (
     <div className="container py-4">
-      <h3 className="mb-4 text-success fw-bold">✅ Panchakarma Procedure Tracker</h3>
+      <h3 className="mb-3 text-success">Panchakarma Procedure Tracker</h3>
 
-      {alert.show && (
-        <Alert
-          variant={alert.variant}
-          onClose={() => setAlert({ ...alert, show: false })}
-          dismissible
-        >
-          {alert.message}
-        </Alert>
-      )}
+      {alert.show && <Alert variant={alert.variant} onClose={() => setAlert({ ...alert, show: false })} dismissible>{alert.message}</Alert>}
 
-      <Card className="shadow-sm p-3 mb-4">
+      <Card className="mb-3 p-3">
         <Form.Group>
-          <Form.Label className="fw-semibold">Select Ongoing Procedure</Form.Label>
-          <Form.Select
-            onChange={(e) =>
-              setSelectedProcedure(procedures.find(p => p._id === e.target.value))
-            }
-          >
-            <option value="">-- Choose a session --</option>
-            {procedures.map(p => (
+          <Form.Label>Select Procedure Session</Form.Label>
+          <Form.Select value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+            <option value="">-- choose active procedure --</option>
+            {activeList.map(p => (
               <option key={p._id} value={p._id}>
-                {p.procedureName || "Unnamed Procedure"} — {p.patientId?.name || "Unknown"} ({p.status || "N/A"})
+                {p.procedureName || p.therapyType || "Unnamed"} — {p.patientId?.name || "Unknown"} ({p.status || "N/A"})
               </option>
             ))}
           </Form.Select>
         </Form.Group>
       </Card>
 
-      {loading && <Spinner animation="border" className="text-success" />}
-
-      {current ? (
-        <>
-          <Card className="shadow-sm p-3 mb-4 border-success">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <h5 className="text-success fw-bold">🧘 Procedure: {current.procedureName || "Unnamed Procedure"}</h5>
-              <strong>Total Time: {formatTime(totalElapsed)}</strong>
-            </div>
-
-            <p>
-              <strong>Patient:</strong> {current.patientId?.name || "Unknown"} <br />
-              <strong>Therapist:</strong> {current.therapistId?.name || "Unknown"} <br />
-              <strong>Status:</strong> <span className="text-primary">{current.status || "N/A"}</span>
-            </p>
-
-            {current.steps?.length ? (
-              <>
-                <h6 className="fw-semibold mb-2">Procedure Steps</h6>
-                <ProgressBar now={calculateProgress(current.steps)} label={`${calculateProgress(current.steps)}%`} className="mb-3" />
-                {current.steps.map((step, index) => (
-                  <Card key={index} className="mb-2 p-2 border border-success-subtle rounded-3">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <div>
-                        <strong>{step.stepName || "Unnamed Step"}</strong>
-                        <div className="text-muted small">{step.notes || ""}</div>
-                        <div className="text-info small">⏱ {formatTime(step.elapsed || 0)}</div>
-                      </div>
-                      <div className="d-flex gap-2">
-                        <Button
-                          variant={step.completed ? "success" : "outline-success"}
-                          size="sm"
-                          disabled={updatingStep || current.status === "completed"}
-                          onClick={() => updateStep(index, step.completed ? "pending" : "in-progress")}
-                        >
-                          {step.completed ? "✓ Done" : "Start / Complete"}
-                        </Button>
-                        <Button
-                          variant="warning"
-                          size="sm"
-                          disabled={updatingStep || current.status === "completed"}
-                          onClick={() => stopStepTimer(index, true)}
-                        >
-                          Stop / Reset
-                        </Button>
-                      </div>
-                    </div>
-                    <ProgressBar now={step.completed ? 100 : 50} variant={step.completed ? "success" : "info"} />
-                  </Card>
-                ))}
-              </>
-            ) : (
-              <p className="text-muted">No steps defined for this procedure yet.</p>
-            )}
-
-            {current.status !== "completed" && (
-              <Button variant="success" className="mt-2" onClick={completeProcedure} disabled={updatingStep}>
-                Complete Procedure ✅
-              </Button>
-            )}
-          </Card>
-
-          {/* Vitals Section */}
-          <Card className="shadow-sm p-3 border border-success">
-            <h6 className="fw-semibold text-success mb-3">💓 Record Patient Vitals</h6>
-            <div className="row">
-              <div className="col-md-3 mb-2">
-                <Form.Control placeholder="Heart Rate (bpm)" value={vitals.heartRate} onChange={(e) => setVitals({ ...vitals, heartRate: e.target.value })} />
+      {selected ? (
+        <Card className="mb-3 p-3">
+          <Row className="align-items-center">
+            <Col md={8}>
+              <h5 className="mb-1">{selected.procedureName || selected.therapyType || "Procedure"}</h5>
+              <div className="text-muted">
+                <strong>Patient:</strong> {selected.patientId?.name || "Unknown"} &nbsp; • &nbsp;
+                <strong>Therapist:</strong> {selected.therapistId?.name || "Unknown"}
               </div>
-              <div className="col-md-3 mb-2">
-                <Form.Control placeholder="Blood Pressure" value={vitals.bloodPressure} onChange={(e) => setVitals({ ...vitals, bloodPressure: e.target.value })} />
+            </Col>
+            <Col md={4} className="text-end">
+              <div style={{ width: "160px", margin: "0 auto" }}>
+                <ProgressBar now={calculateProgress(selected.steps)} label={`${calculateProgress(selected.steps)}%`} />
+                <small className="text-muted">Progress</small>
               </div>
-              <div className="col-md-3 mb-2">
-                <Form.Control placeholder="Temperature (°C)" value={vitals.temperature} onChange={(e) => setVitals({ ...vitals, temperature: e.target.value })} />
-              </div>
-              <div className="col-md-3">
-                <Button variant="success" onClick={handleVitalsSubmit} disabled={addingVitals}>
-                  {addingVitals ? "Adding..." : "Add Vitals"}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </>
+            </Col>
+          </Row>
+        </Card>
       ) : (
-        <div className="text-center text-muted">Select a procedure to track</div>
+        <Card className="mb-3 p-3"><div className="text-muted">Select an active procedure to see summary & controls</div></Card>
       )}
+
+      <Card className="mb-3 p-3">
+        <Row className="g-2 align-items-center">
+          <Col md={8}>
+            <Form.Select value={addStepName} onChange={e => setAddStepName(e.target.value)}>
+              <option value="">Add additional procedure (choose)</option>
+              {AYURVEDIC_PROCEDURES.map((p, i) => <option key={i} value={p}>{p}</option>)}
+            </Form.Select>
+          </Col>
+          <Col md={4}>
+            <Button onClick={handleAddStep} disabled={!selected || !addStepName}>➕ Add Step</Button>
+          </Col>
+        </Row>
+      </Card>
+
+      <h6 className="mb-2">Active Procedures</h6>
+      {loading && <Spinner animation="border" variant="success" />}
+      {activeList.length === 0 && <div className="text-muted mb-3">No active procedures</div>}
+      {activeList.map(proc => (
+        <Card className="mb-2" key={proc._id}>
+          <Card.Body>
+            <Row>
+              <Col md={8}>
+                <strong>{proc.procedureName || proc.therapyType || "Procedure"}</strong><br />
+                <small className="text-muted">{proc.patientId?.name || "Unknown patient"}</small>
+              </Col>
+              <Col md={2} className="text-end">
+                <Badge bg="info">{calculateProgress(proc.steps)}%</Badge>
+              </Col>
+              <Col md={2} className="text-end">
+                <Button size="sm" variant={selectedId === proc._id ? "outline-secondary" : "primary"} onClick={() => setSelectedId(proc._id)}>
+                  Track
+                </Button>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
+      ))}
+
+      {selected && (
+        <Card className="my-3 p-3">
+          <h6>Steps</h6>
+          {(!selected.steps || selected.steps.length === 0) && <div className="text-muted">No steps yet</div>}
+          {selected.steps?.map(step => (
+            <div key={step._id} className="mb-2">
+              <div className="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>{step.stepName}</strong> &nbsp;
+                  <Badge bg={step.status === "completed" ? "success" : step.status === "in-progress" ? "warning" : "secondary"}>
+                    {step.status}
+                  </Badge>
+                  <div className="text-muted small">{step.description}</div>
+                </div>
+                <div className="d-flex gap-2 align-items-center">
+                  <div className="me-2 small text-info">{formatTime(step.elapsed || 0)}</div>
+                  <Button size="sm" onClick={() => setExpandedSteps(prev => ({ ...prev, [step._id]: !prev[step._id] }))}>
+                    {expandedSteps[step._id] ? "Hide" : "Show"}
+                  </Button>
+                  <Button size="sm" variant={step.status === "in-progress" ? "outline-success" : "success"} onClick={() => handleUpdateStep(step._id, step.status === "in-progress" ? "completed" : "in-progress")}>
+                    {step.status === "in-progress" ? "Complete" : "Start"}
+                  </Button>
+                </div>
+              </div>
+
+              <Collapse in={!!expandedSteps[step._id]}>
+                <div className="mt-2 p-2 border rounded">
+                  <div className="mb-1"><strong>Notes:</strong> {step.notes || "—"}</div>
+                  <div className="mb-1"><strong>Start:</strong> {step.startTime ? new Date(step.startTime).toLocaleTimeString() : "—"}</div>
+                  <div className="mb-1"><strong>End:</strong> {step.endTime ? new Date(step.endTime).toLocaleTimeString() : "—"}</div>
+                </div>
+              </Collapse>
+            </div>
+          ))}
+
+          <div className="mt-3 d-flex justify-content-end gap-2">
+            <Button variant="outline-secondary" onClick={fetchProcedures}>Refresh</Button>
+            <Button variant="success" onClick={handleCompleteProcedure}>Complete Procedure</Button>
+          </div>
+        </Card>
+      )}
+
+      <h6 className="mt-4">Completed Procedures</h6>
+      {completedList.length === 0 && <div className="text-muted">No completed procedures yet</div>}
+      {completedList.map(proc => (
+        <Card key={proc._id} className="mb-2 p-2">
+          <Row>
+            <Col>
+              <strong>{proc.procedureName || proc.therapyType}</strong>
+              <div className="text-muted small">{proc.patientId?.name || "Unknown"}</div>
+            </Col>
+            <Col className="text-end">
+              <Badge bg="success">Completed</Badge>
+            </Col>
+          </Row>
+        </Card>
+      ))}
     </div>
   );
 }
