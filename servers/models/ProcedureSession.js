@@ -8,6 +8,7 @@ const StepSchema = new Schema({
   startTime: Date,
   endTime: Date,
   duration: Number, // minutes
+  elapsed: { type: Number, default: 0 }, // seconds - for real-time tracking
   status: { type: String, enum: ["pending", "in-progress", "completed"], default: "pending" },
   notes: String,
 });
@@ -26,6 +27,7 @@ const ProcedureSessionSchema = new Schema(
     patientId: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
     therapistId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     therapyType: { type: String, required: true },
+    procedureName: String, // Added field for display
     steps: [StepSchema],
     vitals: [VitalsSchema],
     startTime: { type: Date, default: Date.now },

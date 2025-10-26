@@ -11,7 +11,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
 
-import { useNavigate } from "react-router-dom"; // ✅ Import useNavigate
+import { useNavigate } from "react-router-dom";
 
 // Status colors for events
 const statusColors = {
@@ -22,7 +22,7 @@ const statusColors = {
 };
 
 const TherapySessions = () => {
-  const navigate = useNavigate(); // ✅ Initialize navigation
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [patients, setPatients] = useState([]);
   const [therapists, setTherapists] = useState([]);
@@ -51,19 +51,24 @@ const TherapySessions = () => {
       }
 
       const headers = { Authorization: `Bearer ${token}` };
+      
+      // ✅ FIXED: Changed from /procedures to /therapy-sessions
       const [sessionsRes, patientsRes, therapistsRes, roomsRes] = await Promise.all([
-        API.get("/procedures", { headers }),
+        API.get("/therapy-sessions", { headers }),
         API.get("/admin/users?role=patient", { headers }),
         API.get("/admin/users?role=therapist", { headers }),
         API.get("/admin/rooms", { headers }),
       ]);
 
-      setSessions(sessionsRes.data);
-      setPatients(patientsRes.data);
-      setTherapists(therapistsRes.data);
-      setRooms(roomsRes.data);
+      console.log("📋 Fetched sessions:", sessionsRes.data); // Debug log
+      console.log("👥 Fetched patients:", patientsRes.data); // Debug log
+
+      setSessions(sessionsRes.data || []);
+      setPatients(patientsRes.data || []);
+      setTherapists(therapistsRes.data || []);
+      setRooms(roomsRes.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("❌ Fetch error:", err);
       setError(err.response?.data?.error || "Failed to fetch data");
     } finally {
       setLoading(false);
@@ -86,7 +91,19 @@ const TherapySessions = () => {
       if (!token) return setError("Missing authentication token");
 
       const headers = { Authorization: `Bearer ${token}` };
-      await API.post("/procedures", form, { headers });
+      
+      // ✅ FIXED: Changed from /procedures to /therapy-sessions
+      const response = await API.post("/therapy-sessions", form, { headers });
+      console.log("✅ Created session:", response.data);
+
+      // ✅ FIXED: Also create a ProcedureSession for tracking
+      await API.post("/procedures", {
+        patientId: form.patientId,
+        therapistId: form.therapistId,
+        therapyType: form.therapyType,
+        procedureName: form.therapyType,
+        notes: form.notes,
+      }, { headers });
 
       setForm({
         patientId: "",
@@ -101,24 +118,21 @@ const TherapySessions = () => {
       setSuccess("Therapy session created successfully!");
       fetchData();
     } catch (err) {
-      console.error("Error creating session:", err);
+      console.error("❌ Error creating session:", err);
       setError(err.response?.data?.error || "Failed to create session");
     }
   };
 
-  // ✅ New: Navigate to ProcedureTracker page
   const handleViewDetails = (sessionId) => {
     navigate(`/procedure-tracker/${sessionId}`);
   };
 
-  // ✅ FullCalendar event click also navigates
   const handleEventClick = (info) => {
     const sessionId = info.event.id;
     handleViewDetails(sessionId);
   };
 
   if (loading) return <Spinner animation="border" className="m-5" />;
-  if (error) return <Alert variant="danger">{error}</Alert>;
 
   return (
     <div className="d-flex">
@@ -130,8 +144,8 @@ const TherapySessions = () => {
           {/* ---------------- Create Session Form ---------------- */}
           <Card className="p-4 mb-4 shadow-sm rounded">
             <h5>Create Therapy Session</h5>
-            {success && <Alert variant="success">{success}</Alert>}
-            {error && <Alert variant="danger">{error}</Alert>}
+            {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
+            {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
             <Form onSubmit={handleSubmit}>
               {/* Patient */}
               <Form.Group className="mb-2">
@@ -154,8 +168,8 @@ const TherapySessions = () => {
               {/* Room */}
               <Form.Group className="mb-2">
                 <Form.Label>Room</Form.Label>
-                <Form.Select name="roomId" value={form.roomId} onChange={handleChange} required>
-                  <option value="">Select Room</option>
+                <Form.Select name="roomId" value={form.roomId} onChange={handleChange}>
+                  <option value="">Select Room (Optional)</option>
                   {rooms.map(r => <option key={r._id} value={r._id}>{r.name}</option>)}
                 </Form.Select>
               </Form.Group>
@@ -169,6 +183,10 @@ const TherapySessions = () => {
                   <option value="Swedana">Swedana</option>
                   <option value="Pizhichil">Pizhichil</option>
                   <option value="Shirodhara">Shirodhara</option>
+                  <option value="Udvartana">Udvartana</option>
+                  <option value="Nasya">Nasya</option>
+                  <option value="Virechana">Virechana</option>
+                  <option value="Basti">Basti</option>
                 </Form.Select>
               </Form.Group>
 
@@ -186,16 +204,19 @@ const TherapySessions = () => {
               {/* Notes */}
               <Form.Group className="mb-2">
                 <Form.Label>Notes</Form.Label>
-                <Form.Control type="text" name="notes" value={form.notes} onChange={handleChange} />
+                <Form.Control as="textarea" rows={2} name="notes" value={form.notes} onChange={handleChange} />
               </Form.Group>
 
-              <Button type="submit" className="mt-2">Schedule</Button>
+              <Button type="submit" className="mt-2" variant="success">Schedule Session</Button>
             </Form>
           </Card>
 
           {/* ---------------- Calendar ---------------- */}
           <Card className="p-4 shadow-sm rounded">
-            <h5>Sessions Calendar</h5>
+            <h5 className="mb-3">Sessions Calendar</h5>
+            {sessions.length === 0 && !loading && (
+              <Alert variant="info">No therapy sessions scheduled yet. Create one above!</Alert>
+            )}
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
               initialView="timeGridWeek"
@@ -204,30 +225,33 @@ const TherapySessions = () => {
                 center: "title",
                 right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek"
               }}
-              events={sessions.map(s => ({
-                id: s._id,
-                title: s.therapyType,
-                start: s.startTime,
-                end: s.endTime,
-                extendedProps: {
-                  patient: s.patientId?.name,
-                  therapist: s.therapistId?.name,
-                  room: s.roomId?.name,
-                  status: s.status,
-                  notes: s.notes
-                },
-                backgroundColor: statusColors[s.status] || "#6c757d",
-                borderColor: statusColors[s.status] || "#6c757d",
-              }))}
+              events={sessions.map(s => {
+                console.log("📅 Mapping session:", s); // Debug log
+                return {
+                  id: s._id,
+                  title: s.therapyType || "Therapy",
+                  start: s.startTime,
+                  end: s.endTime,
+                  extendedProps: {
+                    patient: s.patientId?.name || "Unknown Patient",
+                    therapist: s.therapistId?.name || "Unknown Therapist",
+                    room: s.roomId?.name || "No Room",
+                    status: s.status || "scheduled",
+                    notes: s.notes || ""
+                  },
+                  backgroundColor: statusColors[s.status] || "#6c757d",
+                  borderColor: statusColors[s.status] || "#6c757d",
+                };
+              })}
               eventContent={(eventInfo) => (
                 <OverlayTrigger
                   placement="top"
                   overlay={
                     <Tooltip>
-                      Patient: {eventInfo.event.extendedProps.patient}<br/>
-                      Therapist: {eventInfo.event.extendedProps.therapist}<br/>
-                      Room: {eventInfo.event.extendedProps.room}<br/>
-                      Notes: {eventInfo.event.extendedProps.notes || "N/A"}
+                      <strong>Patient:</strong> {eventInfo.event.extendedProps.patient}<br/>
+                      <strong>Therapist:</strong> {eventInfo.event.extendedProps.therapist}<br/>
+                      <strong>Room:</strong> {eventInfo.event.extendedProps.room}<br/>
+                      <strong>Notes:</strong> {eventInfo.event.extendedProps.notes || "N/A"}
                     </Tooltip>
                   }
                 >
@@ -239,7 +263,7 @@ const TherapySessions = () => {
                     fontSize: "0.85rem",
                     cursor: "pointer"
                   }}
-                  onClick={() => handleViewDetails(eventInfo.event.id)} // ✅ Clickable card
+                  onClick={() => handleViewDetails(eventInfo.event.id)}
                   >
                     <strong>{eventInfo.event.title}</strong>
                     <div>{eventInfo.event.extendedProps.patient}</div>
@@ -258,6 +282,8 @@ const TherapySessions = () => {
               height={650}
               nowIndicator={true}
               editable={false}
+              slotMinTime="08:00:00"
+              slotMaxTime="20:00:00"
             />
           </Card>
         </Container>
