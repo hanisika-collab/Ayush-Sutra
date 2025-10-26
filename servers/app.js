@@ -17,7 +17,10 @@ const patientRoutes = require("./routes/Patients");
 const prescriptionRoutes = require("./routes/Prescriptions");
 const therapySessionRoutes = require("./routes/therapySessionRoutes");
 const procedureRoutes = require("./routes/procedureRoutes");
- // ✅ Procedure Tracking
+const notificationRoutes = require("./routes/notificationRoutes"); // ✅ NEW: Notifications
+
+// ✅ NEW: Email service verification
+const { verifyEmailConfig } = require('./services/emailService');
 
 // Create express app
 const app = express();
@@ -63,7 +66,11 @@ mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log('✅ MongoDB Connected'))
+  .then(() => {
+    console.log('✅ MongoDB Connected');
+    // ✅ NEW: Verify email configuration after MongoDB connects
+    verifyEmailConfig();
+  })
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
 // ------------------- SOCKET.IO CONFIG ------------------- //
@@ -82,6 +89,10 @@ io.on("connection", (socket) => {
   socket.on("procedureUpdated", (data) => io.emit("procedureUpdated", data));
   socket.on("vitalsUpdated", (data) => io.emit("vitalsUpdated", data));
   socket.on("feedbackUpdated", (data) => io.emit("feedbackUpdated", data));
+
+  // ✅ NEW: Real-time events for Notifications
+  socket.on("notificationCreated", (data) => io.emit("notificationCreated", data));
+  socket.on("notificationRead", (data) => io.emit("notificationRead", data));
 
   socket.on("disconnect", () => {
     console.log("🔴 Client disconnected:", socket.id);
@@ -111,9 +122,12 @@ app.use("/api/admin/therapists", require("./routes/admin/therapists"));
 // Patients, Prescriptions, Sessions, Procedures
 app.use('/api/patients', patientRoutes);
 app.use("/api/prescriptions", prescriptionRoutes);
-// app.use("/api/sessions", Sessions);
 app.use("/api/therapy-sessions", therapySessionRoutes);
 app.use("/api/procedures", procedureRoutes);
+
+// ✅ NEW: Notifications route
+app.use("/api/notifications", notificationRoutes);
+
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -128,6 +142,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Server error', message: err.message });
 });
 
+// ✅ NEW: Start notification scheduler (cron jobs)
+// Uncomment this line after creating notificationScheduler.js
+// require('./services/notificationScheduler');
+
 // ------------------- START SERVER ------------------- //
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`)); 
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📧 Email notifications enabled`);
+  console.log(`🔔 Notification system ready`);
+});

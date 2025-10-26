@@ -13,6 +13,7 @@ import PrescriptionAdmin from "./pages/PrescriptionAdmin";
 import TherapySessions from "./pages/TherapySessions";
 import ProcedureTracker from "./pages/ProcedureTracker";
 import ProcedureDetails from "./pages/ProcedureDetails";
+import Notifications from "./pages/Notifications"; // ✅ NEW: Import Notifications
 
 function App() {
   return (
@@ -38,12 +39,15 @@ function App() {
         <Route path="/therapy-sessions" element={<TherapySessions />} />
 
         {/* Procedure Tracker & Details */}
-        {/* Dynamic sessionId for Procedure Tracker */}
         <Route path="/procedure-tracker" element={<ProcedureTracker />} />
+        <Route path="/procedure-tracker/:id" element={<ProcedureTracker />} />
         <Route path="/procedure-details/:id" element={<ProcedureDetails />} />
 
         {/* Prescriptions */}
         <Route path="/prescriptions" element={<PrescriptionAdmin />} />
+
+        {/* ✅ NEW: Notifications & Reminders */}
+        <Route path="/notifications" element={<Notifications />} />
 
         {/* Fallback */}
         <Route path="*" element={<h2>Page Not Found</h2>} />

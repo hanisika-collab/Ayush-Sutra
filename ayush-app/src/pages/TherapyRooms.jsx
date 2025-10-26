@@ -10,12 +10,16 @@ import {
   Modal,
   Form,
   Spinner,
+  Badge,
+  Alert,
 } from "react-bootstrap";
-import { PlusCircle, Pencil, Trash } from "react-bootstrap-icons";
+import { PlusCircle, Pencil, Trash, DoorOpen } from "react-bootstrap-icons";
 
 const TherapyRooms = () => {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -26,7 +30,8 @@ const TherapyRooms = () => {
   const [formData, setFormData] = useState({
     name: "",
     type: "",
-    capacity: "",
+    location: "",
+    capacity: 1,
     available: true,
     resources: [],
   });
@@ -44,11 +49,17 @@ const TherapyRooms = () => {
   // Fetch all rooms
   const fetchRooms = async () => {
     setLoading(true);
+    setError("");
     try {
-      const res = await API.get("/admin/rooms");
-      setRooms(res.data);
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      const res = await API.get("/admin/rooms", { headers });
+      console.log("📋 Fetched rooms:", res.data);
+      setRooms(res.data || []);
     } catch (err) {
-      console.error("Failed to fetch rooms", err);
+      console.error("❌ Failed to fetch rooms:", err);
+      setError(err.response?.data?.error || "Failed to fetch rooms");
     } finally {
       setLoading(false);
     }
@@ -61,7 +72,10 @@ const TherapyRooms = () => {
   // Room form change
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
+    setFormData({ 
+      ...formData, 
+      [name]: type === "checkbox" ? checked : (name === "capacity" ? Number(value) : value)
+    });
   };
 
   // Slot form change
@@ -75,16 +89,25 @@ const TherapyRooms = () => {
 
   // Add or update slot
   const addOrUpdateSlot = () => {
-    if (!slotForm.startTime || !slotForm.endTime) return;
+    if (!slotForm.startTime || !slotForm.endTime) {
+      setError("Please fill in start and end time");
+      return;
+    }
+    
     if (editingSlotIndex !== null) {
       const updatedSlots = [...slots];
       updatedSlots[editingSlotIndex] = slotForm;
       setSlots(updatedSlots);
+      setSuccess("Slot updated");
     } else {
       setSlots([...slots, slotForm]);
+      setSuccess("Slot added");
     }
+    
     setSlotForm({ dayOfWeek: 0, startTime: "", endTime: "", maxConcurrent: 1 });
     setEditingSlotIndex(null);
+    
+    setTimeout(() => setSuccess(""), 2000);
   };
 
   const editSlot = (index) => {
@@ -94,24 +117,38 @@ const TherapyRooms = () => {
 
   const deleteSlot = (index) => {
     setSlots(slots.filter((_, i) => i !== index));
+    setSuccess("Slot removed");
+    setTimeout(() => setSuccess(""), 2000);
   };
 
   // Open modal for add/edit
   const handleShowModal = (room = null) => {
+    setError("");
+    setSuccess("");
+    
     if (room) {
       setEditMode(true);
       setSelectedRoom(room);
       setFormData({
-        name: room.name,
-        type: room.type,
-        capacity: room.capacity || "",
-        available: room.available,
+        name: room.name || "",
+        type: room.type || "",
+        location: room.location || "",
+        capacity: room.capacity || 1,
+        available: room.available !== undefined ? room.available : true,
         resources: room.resources || [],
       });
       setSlots(room.slots || []);
     } else {
       setEditMode(false);
-      setFormData({ name: "", type: "", capacity: "", available: true, resources: [] });
+      setSelectedRoom(null);
+      setFormData({ 
+        name: "", 
+        type: "", 
+        location: "",
+        capacity: 1, 
+        available: true, 
+        resources: [] 
+      });
       setSlots([]);
     }
     setEditingSlotIndex(null);
@@ -121,28 +158,60 @@ const TherapyRooms = () => {
 
   // Save room (create or update)
   const handleSave = async () => {
-    if (!formData.name || !formData.type) return alert("Please fill required fields");
+    setError("");
+    setSuccess("");
+    
+    if (!formData.name || !formData.type) {
+      setError("Please fill in room name and type");
+      return;
+    }
+    
     try {
-      const payload = { ...formData, slots };
-      if (editMode) {
-        await API.put(`/admin/rooms/${selectedRoom._id}`, payload);
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      const payload = { 
+        ...formData, 
+        slots,
+        capacity: Number(formData.capacity) || 1
+      };
+      
+      console.log("💾 Saving room:", payload);
+      
+      if (editMode && selectedRoom) {
+        await API.put(`/admin/rooms/${selectedRoom._id}`, payload, { headers });
+        setSuccess("Room updated successfully!");
       } else {
-        await API.post("/admin/rooms", payload);
+        await API.post("/admin/rooms", payload, { headers });
+        setSuccess("Room created successfully!");
       }
+      
       setShowModal(false);
       fetchRooms();
     } catch (err) {
-      console.error("Error saving room", err);
+      console.error("❌ Error saving room:", err);
+      setError(err.response?.data?.error || "Failed to save room");
     }
   };
 
   const handleDeleteRoom = async (id) => {
     if (!window.confirm("Are you sure you want to delete this room?")) return;
+    
+    setError("");
+    setSuccess("");
+    
     try {
-      await API.delete(`/admin/rooms/${id}`);
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      await API.delete(`/admin/rooms/${id}`, { headers });
+      setSuccess("Room deleted successfully!");
       fetchRooms();
+      
+      setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
-      console.error("Failed to delete room", err);
+      console.error("❌ Failed to delete room:", err);
+      setError(err.response?.data?.error || "Failed to delete room");
     }
   };
 
@@ -155,10 +224,16 @@ const TherapyRooms = () => {
       >
         <Header title="Therapy Room Management" />
         <Container className="py-4">
+          {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
+          {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
+          
           <Card className="shadow-sm border-0 rounded-4">
             <Card.Body>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="text-success mb-0">Therapy Rooms</h5>
+                <h5 className="text-success mb-0">
+                  <DoorOpen className="me-2" />
+                  Therapy Rooms ({rooms.length})
+                </h5>
                 <Button
                   variant="success"
                   className="rounded-pill d-flex align-items-center"
@@ -171,6 +246,12 @@ const TherapyRooms = () => {
               {loading ? (
                 <div className="text-center py-5">
                   <Spinner animation="border" variant="success" />
+                  <p className="mt-2 text-muted">Loading rooms...</p>
+                </div>
+              ) : rooms.length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  <DoorOpen size={48} className="mb-3" />
+                  <p>No therapy rooms found. Create one to get started!</p>
                 </div>
               ) : (
                 <Table hover responsive className="align-middle">
@@ -178,7 +259,9 @@ const TherapyRooms = () => {
                     <tr>
                       <th>Name</th>
                       <th>Type</th>
+                      <th>Location</th>
                       <th>Capacity</th>
+                      <th>Slots</th>
                       <th>Available</th>
                       <th>Actions</th>
                     </tr>
@@ -186,14 +269,18 @@ const TherapyRooms = () => {
                   <tbody>
                     {rooms.map((room) => (
                       <tr key={room._id}>
-                        <td>{room.name}</td>
-                        <td>{room.type}</td>
-                        <td>{room.capacity}</td>
+                        <td><strong>{room.name}</strong></td>
+                        <td>{room.type || "N/A"}</td>
+                        <td>{room.location || "N/A"}</td>
+                        <td>{room.capacity || 1}</td>
+                        <td>
+                          <Badge bg="info">{room.slots?.length || 0} slots</Badge>
+                        </td>
                         <td>
                           {room.available ? (
-                            <span className="badge bg-success">Yes</span>
+                            <Badge bg="success">Available</Badge>
                           ) : (
-                            <span className="badge bg-danger">No</span>
+                            <Badge bg="danger">Unavailable</Badge>
                           )}
                         </td>
                         <td>
@@ -203,14 +290,14 @@ const TherapyRooms = () => {
                             className="me-2"
                             onClick={() => handleShowModal(room)}
                           >
-                            <Pencil />
+                            <Pencil /> Edit
                           </Button>
                           <Button
                             variant="outline-danger"
                             size="sm"
                             onClick={() => handleDeleteRoom(room._id)}
                           >
-                            <Trash />
+                            <Trash /> Delete
                           </Button>
                         </td>
                       </tr>
@@ -226,31 +313,56 @@ const TherapyRooms = () => {
         <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered>
           <Modal.Header closeButton>
             <Modal.Title className="text-success">
-              {editMode ? "Edit Room" : "Add Room"}
+              {editMode ? "Edit Room" : "Add New Room"}
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
+            {error && <Alert variant="danger">{error}</Alert>}
+            {success && <Alert variant="success">{success}</Alert>}
+            
             <Form>
               <Form.Group className="mb-3">
-                <Form.Label>Room Name</Form.Label>
+                <Form.Label>Room Name <span className="text-danger">*</span></Form.Label>
                 <Form.Control
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
-                  placeholder="Enter room name"
+                  placeholder="e.g., Shirodhara Room 1"
+                  required
                 />
               </Form.Group>
+
               <Form.Group className="mb-3">
-                <Form.Label>Type</Form.Label>
-                <Form.Control
-                  type="text"
+                <Form.Label>Type <span className="text-danger">*</span></Form.Label>
+                <Form.Select
                   name="type"
                   value={formData.type}
                   onChange={handleChange}
-                  placeholder="e.g. Shirodhara, Abhyanga"
+                  required
+                >
+                  <option value="">Select Type</option>
+                  <option value="Shirodhara">Shirodhara</option>
+                  <option value="Abhyanga">Abhyanga</option>
+                  <option value="Pizhichil">Pizhichil</option>
+                  <option value="Swedana">Swedana</option>
+                  <option value="Udvartana">Udvartana</option>
+                  <option value="Nasya">Nasya</option>
+                  <option value="General">General Purpose</option>
+                </Form.Select>
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>Location</Form.Label>
+                <Form.Control
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  placeholder="e.g., Ground Floor, Wing A"
                 />
               </Form.Group>
+
               <Form.Group className="mb-3">
                 <Form.Label>Capacity</Form.Label>
                 <Form.Control
@@ -258,101 +370,114 @@ const TherapyRooms = () => {
                   name="capacity"
                   value={formData.capacity}
                   onChange={handleChange}
+                  min="1"
+                  max="10"
                 />
+                <Form.Text className="text-muted">
+                  Maximum number of patients that can be treated simultaneously
+                </Form.Text>
               </Form.Group>
+
               <Form.Group className="mb-3">
                 <Form.Check
                   type="checkbox"
-                  label="Available"
+                  label="Room is Available"
                   name="available"
                   checked={formData.available}
                   onChange={handleChange}
                 />
               </Form.Group>
 
+              <hr />
+
               {/* Slots Management */}
-              <h6>Slots</h6>
-              <div className="d-flex gap-2 mb-2">
-                <select
+              <h6 className="mb-3">Time Slots</h6>
+              <div className="d-flex gap-2 mb-2 flex-wrap">
+                <Form.Select
                   name="dayOfWeek"
                   value={slotForm.dayOfWeek}
                   onChange={handleSlotChange}
-                  className="form-select"
+                  style={{ flex: "1 1 150px" }}
                 >
                   {["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d, i) => (
                     <option key={i} value={i}>{d}</option>
                   ))}
-                </select>
-                <input
+                </Form.Select>
+                <Form.Control
                   type="time"
                   name="startTime"
                   value={slotForm.startTime}
                   onChange={handleSlotChange}
-                  className="form-control"
+                  style={{ flex: "1 1 120px" }}
                 />
-                <input
+                <Form.Control
                   type="time"
                   name="endTime"
                   value={slotForm.endTime}
                   onChange={handleSlotChange}
-                  className="form-control"
+                  style={{ flex: "1 1 120px" }}
                 />
-                <input
+                <Form.Control
                   type="number"
                   name="maxConcurrent"
                   value={slotForm.maxConcurrent}
                   onChange={handleSlotChange}
-                  className="form-control"
                   min={1}
+                  placeholder="Max"
+                  style={{ flex: "1 1 80px" }}
                 />
-                <button
-                  type="button"
-                  className="btn btn-success"
+                <Button
+                  variant="success"
                   onClick={addOrUpdateSlot}
+                  style={{ flex: "0 0 auto" }}
                 >
                   {editingSlotIndex !== null ? "Update" : "Add"}
-                </button>
+                </Button>
               </div>
 
               {/* Slots Table */}
-              <Table size="sm" bordered>
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Max</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slots.map((s, i) => (
-                    <tr key={i}>
-                      <td>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][s.dayOfWeek]}</td>
-                      <td>{s.startTime}</td>
-                      <td>{s.endTime}</td>
-                      <td>{s.maxConcurrent}</td>
-                      <td>
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="me-1"
-                          onClick={() => editSlot(i)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          onClick={() => deleteSlot(i)}
-                        >
-                          Delete
-                        </Button>
-                      </td>
+              {slots.length > 0 ? (
+                <Table size="sm" bordered striped className="mt-3">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Day</th>
+                      <th>Start</th>
+                      <th>End</th>
+                      <th>Max</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {slots.map((s, i) => (
+                      <tr key={i}>
+                        <td>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][s.dayOfWeek]}</td>
+                        <td>{s.startTime}</td>
+                        <td>{s.endTime}</td>
+                        <td>{s.maxConcurrent}</td>
+                        <td>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            className="me-1"
+                            onClick={() => editSlot(i)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => deleteSlot(i)}
+                          >
+                            Delete
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              ) : (
+                <p className="text-muted small mt-2">No slots added yet</p>
+              )}
             </Form>
           </Modal.Body>
           <Modal.Footer>
@@ -360,7 +485,7 @@ const TherapyRooms = () => {
               Cancel
             </Button>
             <Button variant="success" onClick={handleSave}>
-              {editMode ? "Update" : "Save"}
+              {editMode ? "Update Room" : "Create Room"}
             </Button>
           </Modal.Footer>
         </Modal>
