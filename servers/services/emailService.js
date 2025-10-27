@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 
 // Configure email transporter
 // For development, you can use services like Gmail, Mailtrap, or SendGrid
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   // Option 1: Gmail (for testing)
   service: 'gmail',
   auth: {
