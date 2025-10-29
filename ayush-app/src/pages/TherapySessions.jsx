@@ -81,47 +81,61 @@ const TherapySessions = () => {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
+// Replace your handleSubmit function with this updated version
 
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError("");
+  setSuccess("");
+
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return setError("Missing authentication token");
+
+    const headers = { Authorization: `Bearer ${token}` };
+    
+    // ✅ Step 1: Create the therapy session
+    const response = await API.post("/therapy-sessions", form, { headers });
+    console.log("✅ Created session:", response.data);
+
+    // ✅ Step 2: Create a ProcedureSession for tracking
+    await API.post("/procedures", {
+      patientId: form.patientId,
+      therapistId: form.therapistId,
+      therapyType: form.therapyType,
+      procedureName: form.therapyType,
+      notes: form.notes,
+    }, { headers });
+
+    // ✅ Step 3: CREATE PRE-THERAPY NOTIFICATION (THIS WAS MISSING!)
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return setError("Missing authentication token");
-
-      const headers = { Authorization: `Bearer ${token}` };
-      
-      // ✅ FIXED: Changed from /procedures to /therapy-sessions
-      const response = await API.post("/therapy-sessions", form, { headers });
-      console.log("✅ Created session:", response.data);
-
-      // ✅ FIXED: Also create a ProcedureSession for tracking
-      await API.post("/procedures", {
-        patientId: form.patientId,
-        therapistId: form.therapistId,
-        therapyType: form.therapyType,
-        procedureName: form.therapyType,
-        notes: form.notes,
+      await API.post("/notifications/pre-therapy", {
+        sessionId: response.data._id  // Use the newly created session ID
       }, { headers });
-
-      setForm({
-        patientId: "",
-        therapistId: "",
-        roomId: "",
-        therapyType: "",
-        startTime: "",
-        endTime: "",
-        notes: "",
-      });
-
-      setSuccess("Therapy session created successfully!");
-      fetchData();
-    } catch (err) {
-      console.error("❌ Error creating session:", err);
-      setError(err.response?.data?.error || "Failed to create session");
+      console.log("✅ Pre-therapy notification created");
+    } catch (notifErr) {
+      console.warn("⚠️ Failed to create notification:", notifErr);
+      // Don't fail the entire operation if notification fails
     }
-  };
+
+    // ✅ Reset form
+    setForm({
+      patientId: "",
+      therapistId: "",
+      roomId: "",
+      therapyType: "",
+      startTime: "",
+      endTime: "",
+      notes: "",
+    });
+
+    setSuccess("Therapy session created successfully! Notification sent to patient.");
+    fetchData(); // Refresh the calendar
+  } catch (err) {
+    console.error("❌ Error creating session:", err);
+    setError(err.response?.data?.error || "Failed to create session");
+  }
+};
 
   const handleViewDetails = (sessionId) => {
     navigate(`/procedure-tracker/${sessionId}`);

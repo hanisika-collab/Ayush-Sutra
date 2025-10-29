@@ -1,16 +1,26 @@
+// servers/routes/procedureRoutes.js - UPDATED VERSION
 const express = require("express");
 const router = express.Router();
 const ProcedureSession = require("../models/ProcedureSession");
-const User = require("../models/User"); // Make sure this path is correct
+const User = require("../models/User");
 
 // --------------------------------------
-// 🔹 GET all procedures (with enhanced population)
+// 🔹 GET all procedures (WITH FILTERS)
 // --------------------------------------
 router.get("/", async (req, res) => {
   try {
-    console.log("\n📋 Fetching all procedures...");
+    const { patientId, therapistId, status } = req.query;
     
-    const procedures = await ProcedureSession.find()
+    // Build query filter
+    const filter = {};
+    
+    if (patientId) filter.patientId = patientId;
+    if (therapistId) filter.therapistId = therapistId;
+    if (status) filter.status = status;
+    
+    console.log("\n📋 Fetching procedures with filter:", filter);
+    
+    const procedures = await ProcedureSession.find(filter)
       .populate({
         path: "patientId",
         select: "name email phone role",
@@ -24,20 +34,6 @@ router.get("/", async (req, res) => {
       .sort({ createdAt: -1 });
     
     console.log(`✅ Found ${procedures.length} procedures`);
-    
-    // Log sample for debugging
-    if (procedures.length > 0) {
-      const sample = procedures[0];
-      console.log("Sample procedure:", {
-        id: sample._id,
-        therapyType: sample.therapyType,
-        patientId: sample.patientId?._id,
-        patientName: sample.patientId?.name,
-        therapistId: sample.therapistId?._id,
-        therapistName: sample.therapistId?.name,
-        status: sample.status
-      });
-    }
     
     res.json(procedures);
   } catch (err) {
@@ -70,12 +66,7 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Procedure not found" });
     }
     
-    console.log("✅ Procedure found:", {
-      id: procedure._id,
-      patient: procedure.patientId?.name || "NO NAME",
-      therapist: procedure.therapistId?.name || "NO NAME"
-    });
-    
+    console.log("✅ Procedure found");
     res.json(procedure);
   } catch (err) {
     console.error("❌ Fetch single procedure error:", err);
@@ -112,9 +103,6 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Therapist not found" });
     }
     
-    console.log("✅ Patient:", patient.name);
-    console.log("✅ Therapist:", therapist.name);
-
     const session = new ProcedureSession({
       patientId,
       therapistId,
@@ -328,7 +316,7 @@ router.put("/:id/complete", async (req, res) => {
 });
 
 // --------------------------------------
-// 🔹 DELETE procedure (optional - for cleanup)
+// 🔹 DELETE procedure
 // --------------------------------------
 router.delete("/:id", async (req, res) => {
   try {
@@ -347,102 +335,6 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Delete procedure error:", err);
     res.status(500).json({ error: "Failed to delete procedure", message: err.message });
-  }
-});
-
-// --------------------------------------
-// 🔹 FIX existing procedures (run once)
-// --------------------------------------
-router.post("/fix/all", async (req, res) => {
-  try {
-    console.log("\n🔧 Fixing all procedures...");
-    
-    const procedures = await ProcedureSession.find();
-    let fixed = 0;
-    
-    for (const proc of procedures) {
-      let needsSave = false;
-      
-      // Add procedureName if missing
-      if (!proc.procedureName && proc.therapyType) {
-        proc.procedureName = proc.therapyType;
-        needsSave = true;
-      }
-      
-      // Add elapsed to steps if missing
-      if (proc.steps && proc.steps.length > 0) {
-        proc.steps.forEach(step => {
-          if (step.elapsed === undefined) {
-            step.elapsed = 0;
-            needsSave = true;
-          }
-        });
-      }
-      
-      // Set default status if missing
-      if (!proc.status) {
-        proc.status = "in-progress";
-        needsSave = true;
-      }
-      
-      if (needsSave) {
-        await proc.save();
-        fixed++;
-        console.log(`✅ Fixed procedure ${proc._id}`);
-      }
-    }
-    
-    console.log(`✅ Fixed ${fixed} out of ${procedures.length} procedures`);
-    res.json({ 
-      message: `Fixed ${fixed} procedures`, 
-      total: procedures.length,
-      fixed: fixed 
-    });
-  } catch (err) {
-    console.error("❌ Fix procedures error:", err);
-    res.status(500).json({ error: "Failed to fix procedures", message: err.message });
-  }
-});
-
-// --------------------------------------
-// 🔹 GET statistics (optional - useful info)
-// --------------------------------------
-router.get("/stats/summary", async (req, res) => {
-  try {
-    const total = await ProcedureSession.countDocuments();
-    const active = await ProcedureSession.countDocuments({ status: { $ne: "completed" } });
-    const completed = await ProcedureSession.countDocuments({ status: "completed" });
-    
-    const recentProcedures = await ProcedureSession.find()
-      .populate({
-        path: "patientId",
-        select: "name",
-        model: "User"
-      })
-      .populate({
-        path: "therapistId",
-        select: "name",
-        model: "User"
-      })
-      .sort({ createdAt: -1 })
-      .limit(5);
-    
-    res.json({
-      total,
-      active,
-      completed,
-      recent: recentProcedures.map(p => ({
-        id: p._id,
-        therapy: p.therapyType,
-        patient: p.patientId?.name || "Unknown",
-        therapist: p.therapistId?.name || "Unknown",
-        status: p.status,
-        createdAt: p.createdAt
-      }))
-    });
-  } catch (err) {
-    console.error("❌ Stats error:", err);
-    res.status(500).json({ error: "Failed to get statistics", message: err.message });
   }
 });
 

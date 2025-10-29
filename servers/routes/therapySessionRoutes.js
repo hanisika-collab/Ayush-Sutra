@@ -1,23 +1,39 @@
+// servers/routes/therapySessionRoutes.js - UPDATED VERSION
 const express = require("express");
 const router = express.Router();
 const TherapySession = require("../models/TherapySession");
+const Notification = require("../models/Notification");
+const { sendEmail } = require("../services/emailService");
 
 // --------------------------------------
-// 🔹 GET all therapy sessions
+// 🔹 GET all therapy sessions (WITH FILTERS)
 // --------------------------------------
 router.get("/", async (req, res) => {
   try {
-    const sessions = await TherapySession.find()
-      .populate("patientId", "name email phone") // ✅ Enhanced population
+    const { patientId, therapistId, status, startDate, endDate } = req.query;
+    
+    // Build query filter
+    const filter = {};
+    
+    if (patientId) filter.patientId = patientId;
+    if (therapistId) filter.therapistId = therapistId;
+    if (status) filter.status = status;
+    
+    if (startDate || endDate) {
+      filter.startTime = {};
+      if (startDate) filter.startTime.$gte = new Date(startDate);
+      if (endDate) filter.startTime.$lte = new Date(endDate);
+    }
+    
+    console.log("📋 Fetching therapy sessions with filter:", filter);
+    
+    const sessions = await TherapySession.find(filter)
+      .populate("patientId", "name email phone")
       .populate("therapistId", "name email")
       .populate("roomId", "name location")
       .sort({ startTime: -1 });
     
-    console.log("📋 Fetched therapy sessions:", sessions.length);
-    // ✅ Debug: Log first session to check population
-    if (sessions.length > 0) {
-      console.log("Sample session:", JSON.stringify(sessions[0], null, 2));
-    }
+    console.log(`✅ Found ${sessions.length} therapy sessions`);
     
     res.json(sessions);
   } catch (err) {
@@ -27,11 +43,13 @@ router.get("/", async (req, res) => {
 });
 
 // --------------------------------------
-// 🔹 CREATE new therapy session
+// 🔹 CREATE new therapy session (WITH NOTIFICATION)
 // --------------------------------------
 router.post("/", async (req, res) => {
   try {
     const { patientId, therapistId, roomId, therapyType, startTime, endTime, notes } = req.body;
+    
+    console.log("\n📝 Creating therapy session:", { patientId, therapistId, therapyType });
     
     // ✅ Validation
     if (!patientId || !therapistId || !therapyType || !startTime || !endTime) {
@@ -48,7 +66,7 @@ router.post("/", async (req, res) => {
       startTime,
       endTime,
       notes,
-      status: "scheduled" // ✅ Default status
+      status: "scheduled"
     });
 
     await session.save();
@@ -59,6 +77,66 @@ router.post("/", async (req, res) => {
     if (roomId) await session.populate("roomId", "name location");
     
     console.log("✅ Created therapy session:", session._id);
+    
+    // ✅ AUTO-CREATE PRE-THERAPY NOTIFICATION
+    try {
+      const patient = session.patientId;
+      
+      if (patient && patient.email) {
+        const scheduledFor = new Date(session.startTime.getTime() - 24 * 60 * 60 * 1000); // 24 hours before
+        
+        const notification = new Notification({
+          userId: patient._id,
+          type: 'pre-therapy',
+          title: `Upcoming: ${session.therapyType} Session`,
+          message: `Your ${session.therapyType} session is scheduled for ${new Date(session.startTime).toLocaleString()}`,
+          channel: 'email',
+          scheduledFor: scheduledFor,
+          relatedSession: session._id,
+          metadata: {
+            therapyType: session.therapyType,
+            therapistName: session.therapistId?.name || 'TBA',
+            sessionTime: new Date(session.startTime).toLocaleString(),
+            roomName: session.roomId?.name || 'TBA'
+          }
+        });
+        
+        await notification.save();
+        console.log("✅ Auto-created pre-therapy notification");
+        
+        // Send email if scheduled time has passed
+        if (scheduledFor <= new Date()) {
+          setImmediate(async () => {
+            try {
+              const emailResult = await sendEmail(
+                patient.email,
+                'pre-therapy',
+                {
+                  patientName: patient.name,
+                  therapyType: session.therapyType,
+                  sessionTime: new Date(session.startTime).toLocaleString(),
+                  therapistName: session.therapistId?.name || 'TBA',
+                  roomName: session.roomId?.name || 'TBA'
+                }
+              );
+              
+              notification.status = emailResult.success ? 'sent' : 'failed';
+              notification.sentAt = new Date();
+              notification.metadata.emailSent = emailResult.success;
+              notification.metadata.emailError = emailResult.error;
+              await notification.save();
+              
+              console.log(`${emailResult.success ? '✅' : '⚠️'} Email processed`);
+            } catch (emailErr) {
+              console.error(`❌ Background email error:`, emailErr);
+            }
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.warn("⚠️ Failed to create notification:", notifErr);
+      // Don't fail the session creation if notification fails
+    }
     
     // ✅ Emit socket event if available
     req.app.get("io")?.emit("therapySessionCreated", session);
