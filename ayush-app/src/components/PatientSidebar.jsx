@@ -43,6 +43,11 @@ const PatientSidebar = () => {
       icon: <FileText size={18} />,
       label: "Prescriptions",
     },
+    {
+  path: "/patient-therapies",
+  icon: <FileText size={18} />,
+  label: "Therapy Info",
+}
   ];
 
   return (

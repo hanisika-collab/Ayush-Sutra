@@ -29,7 +29,7 @@ import PatientPrescriptions from "./pages/patient/PatientPrescriptions";
 import TherapistDashboard from "./pages/therapist/TherapistDashboard";
 import TherapistPatients from "./pages/therapist/TherapistPatients";
 import TherapistProcedures from "./pages/therapist/TherapistProcedures";
-
+import TherapyInfoPage from "./pages/patient/TherapyInfoPage";
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem("token");
@@ -214,6 +214,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/patient-therapies" element={<TherapyInfoPage />} />
 
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />

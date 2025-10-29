@@ -18,7 +18,7 @@ import {
   Bell,
   Activity,
   FileText,
-  User,
+  Person,
   Clock,
 } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
@@ -207,7 +207,7 @@ const PatientDashboard = () => {
                         </small>
                         <br />
                         <small className="text-muted">
-                          <User size={14} className="me-1" />
+                          <Person size={14} className="me-1" />
                           Therapist: {session.therapistId?.name || "TBA"}
                         </small>
                       </div>
