@@ -1,4 +1,4 @@
-// src/pages/therapist/TherapistDashboard.jsx
+// src/pages/therapist/TherapistDashboard.jsx - WITH APPOINTMENTS
 import React, { useEffect, useState } from "react";
 import {
   Container,
@@ -17,6 +17,7 @@ import {
   Calendar,
   CheckCircle,
   ClockHistory,
+  CalendarCheck,
 } from "react-bootstrap-icons";
 import { Link } from "react-router-dom";
 import TherapistSidebar from "../../components/TherapistSidebar";
@@ -31,9 +32,12 @@ const TherapistDashboard = () => {
     activeProcedures: 0,
     todaySessions: 0,
     completedToday: 0,
+    pendingAppointments: 0, // ✅ NEW
+    approvedAppointments: 0, // ✅ NEW
   });
   const [todaySessions, setTodaySessions] = useState([]);
   const [activeProcedures, setActiveProcedures] = useState([]);
+  const [pendingAppointments, setPendingAppointments] = useState([]); // ✅ NEW
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = currentUser._id || currentUser.id || localStorage.getItem("userId");
@@ -51,14 +55,16 @@ const TherapistDashboard = () => {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-      // Fetch sessions and procedures assigned to this therapist
-      const [sessionsRes, proceduresRes] = await Promise.all([
+      // ✅ Fetch sessions, procedures, AND appointments
+      const [sessionsRes, proceduresRes, appointmentsRes] = await Promise.all([
         API.get(`/therapy-sessions`, { headers }),
         API.get(`/procedures`, { headers }),
+        API.get(`/appointments`, { headers }), // ✅ NEW
       ]);
 
       const allSessions = sessionsRes.data || [];
       const allProcedures = proceduresRes.data || [];
+      const allAppointments = appointmentsRes.data || []; // ✅ NEW
 
       // Filter by therapist
       const mySessions = allSessions.filter(
@@ -67,6 +73,9 @@ const TherapistDashboard = () => {
       const myProcedures = allProcedures.filter(
         (p) => p.therapistId?._id === userId || p.therapistId === userId
       );
+      
+      // ✅ NEW: My appointments (already filtered by backend)
+      const myAppointments = allAppointments;
 
       // Today's sessions
       const today = new Date();
@@ -89,6 +98,10 @@ const TherapistDashboard = () => {
         (s) => s.status === "completed"
       ).length;
 
+      // ✅ NEW: Pending and approved appointments
+      const pending = myAppointments.filter((a) => a.status === "pending");
+      const approved = myAppointments.filter((a) => a.status === "approved");
+
       // Unique patients
       const uniquePatients = new Set(
         mySessions.map((s) => s.patientId?._id || s.patientId)
@@ -99,10 +112,13 @@ const TherapistDashboard = () => {
         activeProcedures: activeProcsList.length,
         todaySessions: todaysSessionsList.length,
         completedToday: completedToday,
+        pendingAppointments: pending.length, // ✅ NEW
+        approvedAppointments: approved.length, // ✅ NEW
       });
 
       setTodaySessions(todaysSessionsList);
       setActiveProcedures(activeProcsList.slice(0, 5)); // Top 5
+      setPendingAppointments(pending.slice(0, 5)); // ✅ NEW: Top 5 pending
     } catch (err) {
       console.error("❌ Dashboard fetch error:", err);
       setError(err.response?.data?.error || "Failed to fetch dashboard data");
@@ -183,6 +199,118 @@ const TherapistDashboard = () => {
               </Card>
             </Col>
           </Row>
+
+          {/* ✅ NEW: Appointments Stats Row */}
+          <Row className="g-4 mb-4">
+            <Col md={6}>
+              <Card className="shadow-sm border-0 rounded-4 text-center py-3 border-warning border-2">
+                <CalendarCheck size={28} color="#ffc107" className="mx-auto" />
+                <h5 className="mt-2">Pending Appointments</h5>
+                <h3 className="fw-bold text-warning">
+                  {stats.pendingAppointments}
+                </h3>
+                <Button
+                  as={Link}
+                  to="/therapist-appointments"
+                  variant="outline-warning"
+                  size="sm"
+                  className="mt-2"
+                >
+                  Review Now →
+                </Button>
+              </Card>
+            </Col>
+            <Col md={6}>
+              <Card className="shadow-sm border-0 rounded-4 text-center py-3 border-success border-2">
+                <CalendarCheck size={28} color="#198754" className="mx-auto" />
+                <h5 className="mt-2">Approved Appointments</h5>
+                <h3 className="fw-bold text-success">
+                  {stats.approvedAppointments}
+                </h3>
+                <Button
+                  as={Link}
+                  to="/therapist-appointments"
+                  variant="outline-success"
+                  size="sm"
+                  className="mt-2"
+                >
+                  View All →
+                </Button>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* ✅ NEW: Pending Appointments Section */}
+          {pendingAppointments.length > 0 && (
+            <Card className="shadow-sm border-0 rounded-4 mb-4 border-warning border-2">
+              <Card.Body>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h5 className="mb-0 text-warning">
+                    <CalendarCheck className="me-2" />
+                    Pending Appointment Requests
+                  </h5>
+                  <Button
+                    as={Link}
+                    to="/therapist-appointments"
+                    variant="outline-warning"
+                    size="sm"
+                  >
+                    View All →
+                  </Button>
+                </div>
+
+                <Table hover responsive className="mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Date</th>
+                      <th>Time</th>
+                      <th>Patient</th>
+                      <th>Type</th>
+                      <th>Priority</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingAppointments.map((appointment) => (
+                      <tr key={appointment._id}>
+                        <td>
+                          {new Date(appointment.preferredDate).toLocaleDateString()}
+                        </td>
+                        <td>{appointment.preferredTime}</td>
+                        <td>{appointment.patientId?.name || "Unknown"}</td>
+                        <td>
+                          {appointment.therapyType || appointment.appointmentType}
+                        </td>
+                        <td>
+                          <Badge
+                            bg={
+                              appointment.priority === "urgent"
+                                ? "danger"
+                                : appointment.priority === "high"
+                                ? "warning"
+                                : "info"
+                            }
+                          >
+                            {appointment.priority}
+                          </Badge>
+                        </td>
+                        <td>
+                          <Button
+                            as={Link}
+                            to="/therapist-appointments"
+                            variant="outline-success"
+                            size="sm"
+                          >
+                            Review
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </Card.Body>
+            </Card>
+          )}
 
           {/* Today's Sessions */}
           <Card className="shadow-sm border-0 rounded-4 mb-4">

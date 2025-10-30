@@ -1,4 +1,4 @@
-// servers/models/Appointment.js
+// servers/models/Appointment.js - ENHANCED VERSION
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
@@ -8,6 +8,7 @@ const AppointmentSchema = new Schema({
     ref: 'User', 
     required: true 
   },
+  // ✅ Healthcare provider selection
   doctorId: { 
     type: Schema.Types.ObjectId, 
     ref: 'User'
@@ -47,12 +48,9 @@ const AppointmentSchema = new Schema({
     enum: ['pending', 'approved', 'rejected', 'completed', 'cancelled', 'rescheduled'],
     default: 'pending'
   },
-  assignedTo: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  assignedDate: Date,
-  assignedTime: String,
+  // Confirmed details after approval
+  confirmedDate: Date,
+  confirmedTime: String,
   roomId: {
     type: Schema.Types.ObjectId,
     ref: 'Room'
@@ -64,29 +62,11 @@ const AppointmentSchema = new Schema({
   approvalDate: Date,
   rejectionReason: String,
   adminNotes: String,
-  doctorNotes: String,
+  staffNotes: String, // Notes from doctor/therapist
   priority: {
     type: String,
     enum: ['low', 'normal', 'high', 'urgent'],
     default: 'normal'
-  },
-  paymentStatus: {
-    type: String,
-    enum: ['pending', 'paid', 'partial', 'refunded'],
-    default: 'pending'
-  },
-  consultationFee: Number,
-  actualStartTime: Date,
-  actualEndTime: Date,
-  duration: Number, // in minutes
-  followUpRequired: {
-    type: Boolean,
-    default: false
-  },
-  followUpDate: Date,
-  reminderSent: {
-    type: Boolean,
-    default: false
   },
   cancellationReason: String,
   cancelledBy: {
@@ -98,39 +78,43 @@ const AppointmentSchema = new Schema({
   timestamps: true 
 });
 
-// Indexes for better query performance
+// ✅ Enhanced indexes for better query performance
 AppointmentSchema.index({ patientId: 1, status: 1 });
 AppointmentSchema.index({ doctorId: 1, status: 1 });
 AppointmentSchema.index({ therapistId: 1, status: 1 });
 AppointmentSchema.index({ preferredDate: 1, status: 1 });
 AppointmentSchema.index({ status: 1, createdAt: -1 });
 
-// Virtual for assigned staff
-AppointmentSchema.virtual('assignedStaff').get(function() {
+// ✅ Virtual for assigned healthcare provider
+AppointmentSchema.virtual('assignedProvider').get(function() {
   return this.doctorId || this.therapistId;
 });
 
-// Method to check if appointment can be cancelled
-AppointmentSchema.methods.canBeCancelled = function() {
-  if (this.status === 'completed' || this.status === 'cancelled') {
-    return false;
+// ✅ Method to get provider details
+AppointmentSchema.methods.getProviderInfo = function() {
+  if (this.doctorId) {
+    return {
+      type: 'doctor',
+      id: this.doctorId._id || this.doctorId,
+      name: this.doctorId.name || 'Doctor'
+    };
+  } else if (this.therapistId) {
+    return {
+      type: 'therapist',
+      id: this.therapistId._id || this.therapistId,
+      name: this.therapistId.name || 'Therapist'
+    };
   }
-  const appointmentTime = new Date(this.preferredDate + ' ' + this.preferredTime);
-  const now = new Date();
-  const hoursDiff = (appointmentTime - now) / (1000 * 60 * 60);
-  return hoursDiff >= 2; // Can cancel if more than 2 hours away
+  return null;
 };
 
-// Static method to get upcoming appointments
-AppointmentSchema.statics.getUpcoming = function(userId, role) {
+// ✅ Static method to get appointments for a provider
+AppointmentSchema.statics.getProviderAppointments = function(userId, role) {
   const query = {
-    status: { $in: ['pending', 'approved'] },
-    preferredDate: { $gte: new Date() }
+    status: { $in: ['pending', 'approved'] }
   };
   
-  if (role === 'patient') {
-    query.patientId = userId;
-  } else if (role === 'doctor') {
+  if (role === 'doctor') {
     query.doctorId = userId;
   } else if (role === 'therapist') {
     query.therapistId = userId;

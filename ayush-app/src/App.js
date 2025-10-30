@@ -34,6 +34,8 @@ import TherapistPrescriptions from './pages/therapist/TherapistPrescriptions';
 import TherapistPatientRegistration from './pages/therapist/TherapistPatientRegistration';
 import BookAppointment from "./pages/patient/BookAppointment";
 import PatientAppointments from "./pages/patient/PatientAppointments";
+import AdminAppointments from "./pages/AdminAppointments";
+import TherapistAppointments from './pages/therapist/TherapistAppointments';
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem("token");
@@ -105,7 +107,7 @@ function App() {
         <Route
           path="/patient-registration"
           element={
-            <ProtectedRoute allowedRoles={["admin", "doctor"]}>
+            <ProtectedRoute allowedRoles={["admin"]}>
               <PatientRegistration />
             </ProtectedRoute>
           }
@@ -245,6 +247,15 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/therapist-appointments" element={<TherapistAppointments />} />
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
 

@@ -1,5 +1,5 @@
-// ayush-app/src/pages/patient/BookAppointment.jsx
-import React, { useState } from "react";
+// ayush-app/src/pages/patient/BookAppointment.jsx - WITH PROVIDER SELECTION
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Card,
@@ -10,7 +10,7 @@ import {
   Alert,
   Spinner,
 } from "react-bootstrap";
-import { Calendar, Clock, CheckCircle } from "react-bootstrap-icons";
+import { Calendar, Clock, CheckCircle, Person } from "react-bootstrap-icons";
 import { useNavigate } from "react-router-dom";
 import PatientSidebar from "../../components/PatientSidebar";
 import Header from "../../components/Header";
@@ -19,8 +19,13 @@ import API from "../../api";
 const BookAppointment = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [loadingProviders, setLoadingProviders] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  
+  // ✅ NEW: Provider lists
+  const [doctors, setDoctors] = useState([]);
+  const [therapists, setTherapists] = useState([]);
 
   const [formData, setFormData] = useState({
     appointmentType: "",
@@ -34,6 +39,9 @@ const BookAppointment = () => {
     currentMedications: "",
     allergies: "",
     priority: "normal",
+    // ✅ NEW: Provider selection
+    doctorId: "",
+    therapistId: "",
   });
 
   const appointmentTypes = [
@@ -72,9 +80,46 @@ const BookAppointment = () => {
     "05:00 PM",
   ];
 
+  // ✅ Fetch available doctors and therapists
+  useEffect(() => {
+    fetchProviders();
+  }, []);
+
+  const fetchProviders = async () => {
+    try {
+      setLoadingProviders(true);
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const res = await API.get("/appointments/providers", { headers });
+      const providers = res.data || [];
+
+      const doctorsList = providers.filter(p => p.role === 'doctor');
+      const therapistsList = providers.filter(p => p.role === 'therapist');
+
+      setDoctors(doctorsList);
+      setTherapists(therapistsList);
+      
+      console.log('✅ Loaded providers:', { doctors: doctorsList.length, therapists: therapistsList.length });
+    } catch (err) {
+      console.error("❌ Fetch providers error:", err);
+      // Don't show error, just log it
+    } finally {
+      setLoadingProviders(false);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    
+    // ✅ Clear therapist when doctor is selected and vice versa
+    if (name === 'doctorId' && value) {
+      setFormData({ ...formData, doctorId: value, therapistId: "" });
+    } else if (name === 'therapistId' && value) {
+      setFormData({ ...formData, therapistId: value, doctorId: "" });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -90,6 +135,12 @@ const BookAppointment = () => {
       !formData.symptoms
     ) {
       setError("Please fill in all required fields");
+      return;
+    }
+
+    // ✅ Validate provider selection
+    if (!formData.doctorId && !formData.therapistId) {
+      setError("Please select either a doctor or therapist");
       return;
     }
 
@@ -118,8 +169,12 @@ const BookAppointment = () => {
 
       await API.post("/appointments", formData, { headers });
 
+      const providerName = formData.doctorId 
+        ? doctors.find(d => d._id === formData.doctorId)?.name
+        : therapists.find(t => t._id === formData.therapistId)?.name;
+
       setSuccess(
-        "Appointment request submitted successfully! We will notify you once it's confirmed."
+        `Appointment request submitted successfully to ${providerName || 'your healthcare provider'}! You will be notified once it's confirmed.`
       );
 
       // Reset form
@@ -135,6 +190,8 @@ const BookAppointment = () => {
         currentMedications: "",
         allergies: "",
         priority: "normal",
+        doctorId: "",
+        therapistId: "",
       });
 
       // Redirect after 3 seconds
@@ -151,7 +208,6 @@ const BookAppointment = () => {
     }
   };
 
-  // Get minimum date (today)
   const getMinDate = () => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -208,6 +264,75 @@ const BookAppointment = () => {
           <Card className="shadow-sm border-0 rounded-4">
             <Card.Body className="p-4">
               <Form onSubmit={handleSubmit}>
+                {/* ✅ NEW: Healthcare Provider Selection */}
+                <h5 className="text-success mb-3">Select Healthcare Provider</h5>
+                {loadingProviders ? (
+                  <div className="text-center mb-3">
+                    <Spinner animation="border" size="sm" variant="success" />
+                    <span className="ms-2">Loading providers...</span>
+                  </div>
+                ) : (
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>
+                          <Person className="me-2" />
+                          Select Doctor (Optional)
+                        </Form.Label>
+                        <Form.Select
+                          name="doctorId"
+                          value={formData.doctorId}
+                          onChange={handleChange}
+                          disabled={!!formData.therapistId}
+                        >
+                          <option value="">-- Choose Doctor --</option>
+                          {doctors.map((doctor) => (
+                            <option key={doctor._id} value={doctor._id}>
+                              Dr. {doctor.name}
+                            </option>
+                          ))}
+                        </Form.Select>
+                        <Form.Text className="text-muted">
+                          For consultations and medical evaluations
+                        </Form.Text>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>
+                          <Person className="me-2" />
+                          Select Therapist (Optional)
+                        </Form.Label>
+                        <Form.Select
+                          name="therapistId"
+                          value={formData.therapistId}
+                          onChange={handleChange}
+                          disabled={!!formData.doctorId}
+                        >
+                          <option value="">-- Choose Therapist --</option>
+                          {therapists.map((therapist) => (
+                            <option key={therapist._id} value={therapist._id}>
+                              {therapist.name}
+                            </option>
+                          ))}
+                        </Form.Select>
+                        <Form.Text className="text-muted">
+                          For therapy sessions and treatments
+                        </Form.Text>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                )}
+                
+                {(!formData.doctorId && !formData.therapistId) && (
+                  <Alert variant="info" className="mb-4">
+                    <strong>ℹ️ Please select either a doctor or therapist</strong>
+                    <p className="mb-0 mt-2 small">
+                      Choose a doctor for medical consultations or a therapist for specific therapy treatments.
+                    </p>
+                  </Alert>
+                )}
+
                 {/* Appointment Type */}
                 <h5 className="text-success mb-3">Appointment Details</h5>
                 <Row>
@@ -427,7 +552,7 @@ const BookAppointment = () => {
                   <Button
                     type="submit"
                     variant="success"
-                    disabled={loading}
+                    disabled={loading || (!formData.doctorId && !formData.therapistId)}
                     className="px-4"
                   >
                     {loading ? (
@@ -467,7 +592,7 @@ const BookAppointment = () => {
               </h6>
               <ul className="mb-0 small">
                 <li>
-                  Your appointment request will be reviewed by our staff
+                  Your appointment request will be reviewed by the selected healthcare provider
                 </li>
                 <li>
                   You will receive a confirmation email once approved
@@ -476,8 +601,7 @@ const BookAppointment = () => {
                   Please arrive 10 minutes before your scheduled time
                 </li>
                 <li>
-                  Cancellations must be made at least 24 hours in
-                  advance
+                  Cancellations must be made at least 24 hours in advance
                 </li>
               </ul>
             </Card.Body>

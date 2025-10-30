@@ -77,6 +77,11 @@ const Sidebar = () => {
       icon: <Bell />,
       badge: unreadCount // ✅ NEW: Show unread count
     },
+    { 
+      path: "/appointments", 
+      label: "Appointments", 
+      icon: <Calendar3 /> 
+    },
   ];
 
   const logout = () => {

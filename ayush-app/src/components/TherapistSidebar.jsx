@@ -1,4 +1,4 @@
-// src/components/TherapistSidebar.jsx
+// src/components/TherapistSidebar.jsx - WITH APPOINTMENTS
 import React from "react";
 import { Nav } from "react-bootstrap";
 import { Link, useNavigate, useLocation } from "react-router-dom";
@@ -7,6 +7,7 @@ import {
   People,
   Activity,
   Calendar,
+  CalendarCheck,
   FileText,
   PersonPlus,
   List,
@@ -32,6 +33,12 @@ const TherapistSidebar = () => {
       icon: <House size={18} />,
       label: "Dashboard",
     },
+    // ✅ NEW: Appointments link
+    {
+      path: "/therapist-appointments",
+      icon: <CalendarCheck size={18} />,
+      label: "Appointments",
+    },
     {
       path: "/therapist-patients",
       icon: <People size={18} />,
@@ -52,13 +59,6 @@ const TherapistSidebar = () => {
       icon: <List size={18} />,
       label: "All Patients",
     },
-    // <Nav.Link
-    //       as={Link}
-    //       to="/therapist-patient-registration"
-    //       className={`text-white mb-2 rounded ${
-    //         isActive("/therapist-patient-registration") ? "bg-light bg-opacity-25" : ""
-    //       }`}
-    //     ></Nav.Link>
     {
       path: "/therapist-patient-registration",
       icon: <PersonPlus size={18} />,
@@ -66,7 +66,7 @@ const TherapistSidebar = () => {
     },
   ];
 
-  // Additional items for doctors AND therapists - UPDATED
+  // Prescription item for both doctors and therapists
   const prescriptionItem = {
     path: "/prescriptions",
     icon: <FileText size={18} />,
