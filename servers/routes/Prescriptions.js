@@ -6,8 +6,8 @@ const mongoose = require("mongoose");
 
 const Prescription = require("../models/Prescription");
 const Notification = require("../models/Notification");
-// const User = require("../models/User");
-const Patient = require("../models/Patient");
+const User = require("../models/User"); // ✅ FIXED: Use User model for patients
+// const Patient = require("../models/Patient"); // ❌ Remove this
 
 const verifyToken = require("../middleware/auth");
 const { sendEmail } = require("../services/emailService");
@@ -39,6 +39,8 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
     const { patientId, notes } = req.body;
     const uploadedBy = req.user.id; // from JWT
 
+    console.log("📄 Uploading prescription:", { patientId, uploadedBy });
+
     // Validate file presence
     if (!req.file) {
       return res.status(400).json({ error: "Prescription file is required" });
@@ -49,11 +51,13 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Invalid patient ID" });
     }
 
-    // Verify uploader role
+    // ✅ FIXED: Verify uploader role
     const uploader = await User.findById(uploadedBy);
     if (!uploader) {
       return res.status(401).json({ error: "Unauthorized user" });
     }
+
+    console.log("👤 Uploader role:", uploader.role);
 
     if (!["doctor", "therapist", "admin"].includes(uploader.role)) {
       return res.status(403).json({
@@ -61,11 +65,14 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
       });
     }
 
-    // Verify patient exists (in User model, not Patient)
+    // ✅ FIXED: Verify patient exists (in User model with role='patient')
     const patientUser = await User.findById(patientId);
     if (!patientUser || patientUser.role !== "patient") {
+      console.log("❌ Patient not found or invalid role:", patientUser?.role);
       return res.status(404).json({ error: "Patient not found" });
     }
+
+    console.log("✅ Patient found:", patientUser.name);
 
     // Create prescription record
     const filePath = `/uploads/prescriptions/${req.file.filename}`;
@@ -78,12 +85,14 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
     });
     await prescription.save();
 
+    console.log("✅ Prescription saved:", prescription._id);
+
     // Create notification for patient
     const notification = new Notification({
       userId: patientId,
-      type: "prescription",
+      type: "general", // ✅ Changed from "prescription" to "general"
       title: "New Prescription Uploaded",
-      message: `Dr. ${uploader.name} has uploaded a new prescription: ${req.file.originalname}`,
+      message: `${uploader.role === 'doctor' ? 'Dr.' : ''} ${uploader.name} has uploaded a new prescription: ${req.file.originalname}`,
       channel: "email",
       scheduledFor: new Date(),
       metadata: {
@@ -94,19 +103,25 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
     });
 
     await notification.save();
+    console.log("✅ Notification created");
 
     // Send email to patient
     if (patientUser.email) {
-      await sendEmail(patientUser.email, "prescription-upload", {
+      const emailResult = await sendEmail(patientUser.email, "prescription-upload", {
         patientName: patientUser.name,
         uploadedByName: uploader.name,
         fileName: req.file.originalname,
         notes,
       });
 
-      notification.status = "sent";
-      notification.sentAt = new Date();
-      await notification.save();
+      if (emailResult.success) {
+        notification.status = "sent";
+        notification.sentAt = new Date();
+        await notification.save();
+        console.log("✅ Email sent successfully");
+      } else {
+        console.warn("⚠️ Email failed:", emailResult.error);
+      }
     }
 
     res.status(201).json({
@@ -114,7 +129,7 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
       prescription,
     });
   } catch (err) {
-    console.error("Prescription Upload Error:", err);
+    console.error("❌ Prescription Upload Error:", err);
     res.status(500).json({
       error: "Failed to upload prescription",
       details: err.message,
@@ -123,18 +138,21 @@ router.post("/", verifyToken, upload.single("file"), async (req, res) => {
 });
 
 // -----------------------------
-// 📄 GET: All Prescriptions
+// 📄 GET: All Prescriptions (NO AUTH REQUIRED)
 // -----------------------------
 router.get("/", async (req, res) => {
   try {
+    console.log("📋 Fetching all prescriptions");
+    
     const prescriptions = await Prescription.find()
       .populate("patientId", "name email")
       .populate("uploadedBy", "name email role")
       .sort({ uploadedAt: -1 });
 
+    console.log(`✅ Found ${prescriptions.length} prescriptions`);
     res.json(prescriptions);
   } catch (err) {
-    console.error("Fetch Prescriptions Error:", err);
+    console.error("❌ Fetch Prescriptions Error:", err);
     res.status(500).json({ error: "Failed to fetch prescriptions" });
   }
 });
@@ -154,7 +172,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(prescription);
   } catch (err) {
-    console.error("Fetch Prescription Error:", err);
+    console.error("❌ Fetch Prescription Error:", err);
     res.status(500).json({ error: "Failed to fetch prescription" });
   }
 });
@@ -186,7 +204,7 @@ router.delete("/:id", verifyToken, async (req, res) => {
 
     res.json({ message: "Prescription deleted successfully" });
   } catch (err) {
-    console.error("Delete Prescription Error:", err);
+    console.error("❌ Delete Prescription Error:", err);
     res.status(500).json({ error: "Failed to delete prescription" });
   }
 });

@@ -1,21 +1,42 @@
+// routes/admin/users.js - FIXED VERSION
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const User = require("../../models/User");
-const verifyAdminToken = require("../../middleware/verifyAdminToken");
+const auth = require("../../middleware/auth");
 
+// ✅ Apply auth middleware - already applied in parent router
+// But we'll add role-specific logic in each route
 
 // -----------------------------
 // Get all users (optional ?role=doctor/patient/therapist)
-// Only admin can access
+// Admin, doctor, and therapist can access
 // -----------------------------
-router.get("/", verifyAdminToken, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
+    // ✅ Check permissions
+    if (!['admin', 'doctor', 'therapist'].includes(req.user.role)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const { role } = req.query;
     const filter = role ? { role } : {};
+    
+    // ✅ Therapists can only see patients
+    if (req.user.role === 'therapist' && !role) {
+      filter.role = 'patient';
+    } else if (req.user.role === 'therapist' && role !== 'patient') {
+      return res.status(403).json({ error: "Therapists can only view patients" });
+    }
+
+    console.log(`📋 Fetching users with filter:`, filter, `by ${req.user.role}`);
+    
     const users = await User.find(filter).select("-passwordHash");
+    
+    console.log(`✅ Found ${users.length} users`);
     res.json(users);
   } catch (error) {
+    console.error("❌ Fetch users error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -23,12 +44,11 @@ router.get("/", verifyAdminToken, async (req, res) => {
 // -----------------------------
 // Get current logged-in user info (role-based)
 // -----------------------------
-router.get("/me", verifyAdminToken, async (req, res) => {
+router.get("/me", async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-passwordHash");
+    const user = await User.findById(req.user._id).select("-passwordHash");
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // For doctors/therapists, you can add custom data like assigned patients/therapies
     let responseData = {
       _id: user._id,
       name: user.name,
@@ -37,70 +57,114 @@ router.get("/me", verifyAdminToken, async (req, res) => {
       phone: user.phone,
     };
 
+    // Add role-specific data if needed
     if (user.role === "doctor") {
-      // Example: doctor assigned patients (implement your logic)
-      responseData.patients = []; // fill with actual patient list if available
+      responseData.patients = [];
     }
 
     if (user.role === "therapist") {
-      // Example: therapist assigned therapies
-      responseData.therapies = []; // fill with actual therapy list if available
+      responseData.therapies = [];
     }
 
     if (user.role === "patient") {
-      // Example: patient therapies
-      responseData.therapies = []; // fill with actual therapy list if available
+      responseData.therapies = [];
     }
 
+    console.log(`✅ Fetched user info for: ${user.name} (${user.role})`);
     res.json(responseData);
   } catch (error) {
+    console.error("❌ Fetch user info error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // -----------------------------
 // Create user (doctor / therapist / patient)
-// Only admin can access
+// Only admin can create users
 // -----------------------------
-router.post("/", verifyAdminToken, async (req, res) => {
+router.post("/", async (req, res) => {
   try {
+    // ✅ Only admin can create users
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only admin can create users" });
+    }
+
     const { name, email, password, role, phone } = req.body;
+    
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ error: "User already exists" });
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = new User({ name, email, passwordHash, role, phone });
     await user.save();
-    res.json({ message: `${role} created successfully`, user });
+    
+    console.log(`✅ Created new ${role}: ${name}`);
+    res.json({ message: `${role} created successfully`, user: { ...user.toObject(), passwordHash: undefined } });
   } catch (error) {
+    console.error("❌ Create user error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // -----------------------------
 // Update user
-// Only admin can access
+// Admin can update anyone, others can only update themselves
 // -----------------------------
-router.put("/:id", verifyAdminToken, async (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
+    // ✅ Check permissions
+    if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
+      return res.status(403).json({ error: "You can only update your own profile" });
+    }
+
     const updates = req.body;
-    delete updates.passwordHash;
-    const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true });
+    delete updates.passwordHash; // Don't allow direct password hash updates
+    delete updates.role; // Don't allow role changes unless admin
+    
+    // ✅ Admin can change roles
+    if (req.user.role === 'admin' && req.body.role) {
+      updates.role = req.body.role;
+    }
+
+    const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true }).select("-passwordHash");
+    
+    if (!user) return res.status(404).json({ error: "User not found" });
+    
+    console.log(`✅ Updated user: ${user.name}`);
     res.json({ message: "User updated", user });
   } catch (error) {
+    console.error("❌ Update user error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // -----------------------------
 // Deactivate user
-// Only admin can access
+// Only admin can deactivate users
 // -----------------------------
-router.delete("/:id", verifyAdminToken, async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { active: false }, { new: true });
+    // ✅ Only admin can deactivate users
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only admin can deactivate users" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id, 
+      { active: false }, 
+      { new: true }
+    ).select("-passwordHash");
+    
+    if (!user) return res.status(404).json({ error: "User not found" });
+    
+    console.log(`✅ Deactivated user: ${user.name}`);
     res.json({ message: "User deactivated", user });
   } catch (error) {
+    console.error("❌ Deactivate user error:", error);
     res.status(500).json({ error: error.message });
   }
 });
