@@ -1,6 +1,7 @@
 // services/emailService.js
 const nodemailer = require('nodemailer');
-
+const dotenv = require('dotenv');
+dotenv.config();
 // Configure email transporter
 // For development, you can use services like Gmail, Mailtrap, or SendGrid
 const transporter = nodemailer.createTransport({

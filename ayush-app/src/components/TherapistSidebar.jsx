@@ -73,20 +73,20 @@ const TherapistSidebar = () => {
     label: "Prescriptions",
   };
 
-  const doctorOnlyItems = [
-    {
-      path: "/patient-registration",
-      icon: <PersonPlus size={18} />,
-      label: "Register Patient",
-    },
-  ];
+  // const doctorOnlyItems = [
+  //   {
+  //     path: "/patient-registration",
+  //     icon: <PersonPlus size={18} />,
+  //     label: "Register Patient",
+  //   },
+  // ];
 
   // Build menu items based on role
   let menuItems = [...baseMenuItems, prescriptionItem];
   
-  if (role === "doctor") {
-    menuItems = [...menuItems, ...doctorOnlyItems];
-  }
+  // if (role === "doctor") {
+  //   menuItems = [...menuItems, ...doctorOnlyItems];
+  // }
 
   return (
     <div

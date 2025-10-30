@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.js - FIXED VERSION WITH ALL ROUTES
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
@@ -17,25 +17,25 @@ import TherapyRooms from "./pages/TherapyRooms";
 import TherapySessions from "./pages/TherapySessions";
 import ProcedureTracker from "./pages/ProcedureTracker";
 import Notifications from "./pages/Notifications";
-// import PrescriptionAdmin from "./pages/PrescriptionAdmin";
 
 // Patient Pages
 import PatientDashboard from "./pages/patient/PatientDashboard";
 import PatientProgress from "./pages/patient/PatientProgress";
 import PatientNotifications from "./pages/patient/PatientNotifications";
 import PatientPrescriptions from "./pages/patient/PatientPrescriptions";
+import TherapyInfoPage from "./pages/patient/TherapyInfoPage";
+import BookAppointment from "./pages/patient/BookAppointment";
+import PatientAppointments from "./pages/patient/PatientAppointments";
 
 // Doctor/Therapist Pages
 import TherapistDashboard from "./pages/therapist/TherapistDashboard";
 import TherapistPatients from "./pages/therapist/TherapistPatients";
 import TherapistProcedures from "./pages/therapist/TherapistProcedures";
-import TherapyInfoPage from "./pages/patient/TherapyInfoPage";
 import TherapistPrescriptions from './pages/therapist/TherapistPrescriptions';
 import TherapistPatientRegistration from './pages/therapist/TherapistPatientRegistration';
-import BookAppointment from "./pages/patient/BookAppointment";
-import PatientAppointments from "./pages/patient/PatientAppointments";
-import AdminAppointments from "./pages/AdminAppointments";
 import TherapistAppointments from './pages/therapist/TherapistAppointments';
+import AdminAppointments from "./pages/AdminAppointments";
+
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem("token");
@@ -152,14 +152,14 @@ function App() {
             </ProtectedRoute>
           }
         />
-        {/* <Route
-          path="/prescriptions"
+        <Route
+          path="/appointments"
           element={
-            <ProtectedRoute allowedRoles={["admin", "doctor"]}>
-              <PrescriptionAdmin />
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminAppointments />
             </ProtectedRoute>
           }
-        /> */}
+        />
 
         {/* Doctor/Therapist Routes */}
         <Route
@@ -170,6 +170,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* ✅ FIXED: Added missing route */}
         <Route
           path="/therapist-patients"
           element={
@@ -183,6 +184,30 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["doctor", "therapist"]}>
               <TherapistProcedures />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/prescriptions"
+          element={
+            <ProtectedRoute allowedRoles={["doctor", "therapist"]}>
+              <TherapistPrescriptions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/therapist-patient-registration"
+          element={
+            <ProtectedRoute allowedRoles={["admin","doctor", "therapist"]}>
+              <TherapistPatientRegistration />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/therapist-appointments"
+          element={
+            <ProtectedRoute allowedRoles={["doctor", "therapist"]}>
+              <TherapistAppointments />
             </ProtectedRoute>
           }
         />
@@ -220,13 +245,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/patient-therapies" element={<TherapyInfoPage />} />
-        <Route path="/prescriptions" element={<TherapistPrescriptions />} />
         <Route
-          path="/therapist-patient-registration"
+          path="/patient-therapies"
           element={
-            <ProtectedRoute allowedRoles={["doctor", "therapist"]}>
-              <TherapistPatientRegistration />
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <TherapyInfoPage />
             </ProtectedRoute>
           }
         />
@@ -238,7 +261,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/patient-appointments"
           element={
@@ -247,18 +269,9 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/appointments"
-          element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminAppointments />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/therapist-appointments" element={<TherapistAppointments />} />
+
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
-
       </Routes>
     </Router>
   );

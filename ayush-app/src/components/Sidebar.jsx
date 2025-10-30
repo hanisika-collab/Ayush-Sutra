@@ -65,7 +65,7 @@ const Sidebar = () => {
 
   const menuItems = [
     { path: "/dashboard", label: "Dashboard", icon: <BarChart /> },
-    { path: "/patients/register", label: "Register Patient", icon: <PersonPlus /> },
+    { path: "/therapist-patient-registration", label: "Register Patient", icon: <PersonPlus /> },
     { path: "/patients", label: "Patients List", icon: <People /> },
     { path: "/therapy-rooms", label: "Therapy Rooms", icon: <House /> },
     { path: "/therapy-sessions", label: "Therapy Sessions", icon: <Calendar3 /> },
