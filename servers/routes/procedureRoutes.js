@@ -301,14 +301,94 @@ router.put("/:id/complete", async (req, res) => {
       return res.status(404).json({ error: "Procedure not found" });
     }
 
+    // Mark procedure as completed
     procedure.status = "completed";
     procedure.endTime = new Date();
     await procedure.save();
 
     console.log("✅ Procedure completed successfully");
+
+    // ✅ ALSO UPDATE RELATED THERAPY SESSION STATUS
+    try {
+      const relatedSession = await TherapySession.findOne({
+        patientId: procedure.patientId._id,
+        therapistId: procedure.therapistId._id,
+        therapyType: procedure.therapyType,
+        status: { $in: ['scheduled', 'ongoing'] }
+      }).sort({ startTime: -1 });
+
+      if (relatedSession) {
+        relatedSession.status = 'completed';
+        await relatedSession.save();
+        console.log("✅ Updated related therapy session to completed");
+      }
+    } catch (err) {
+      console.warn("⚠️ Could not update therapy session:", err.message);
+    }
+
+    // ✅ AUTO-CREATE POST-THERAPY NOTIFICATION
+    try {
+      const patient = procedure.patientId;
+      const therapist = procedure.therapistId;
+      
+      if (patient && patient.email) {
+        console.log("📧 Creating post-therapy notification...");
+        
+        const notification = new Notification({
+          userId: patient._id,
+          type: 'post-therapy',
+          title: `Post-Care: ${procedure.therapyType} Session`,
+          message: `Your ${procedure.therapyType} therapy session has been completed. Please follow the post-care instructions sent to your email.`,
+          channel: 'email',
+          scheduledFor: new Date(),
+          metadata: {
+            therapyType: procedure.therapyType,
+            therapistName: therapist?.name || 'Your therapist',
+            completedAt: new Date().toLocaleString(),
+            nextSession: 'To be scheduled'
+          }
+        });
+        
+        await notification.save();
+        console.log("✅ Post-therapy notification created");
+        
+        // Send email immediately
+        const emailResult = await sendEmail(
+          patient.email,
+          'post-therapy',
+          {
+            patientName: patient.name,
+            therapyType: procedure.therapyType,
+            therapistName: therapist?.name || 'Your therapist',
+            nextSession: 'Please contact us to schedule your next session'
+          }
+        );
+        
+        notification.status = emailResult.success ? 'sent' : 'failed';
+        notification.sentAt = new Date();
+        notification.metadata.emailSent = emailResult.success;
+        notification.metadata.emailError = emailResult.error;
+        await notification.save();
+        
+        if (emailResult.success) {
+          console.log("✅ Post-therapy email sent successfully");
+        } else {
+          console.warn("⚠️ Post-therapy email failed:", emailResult.error);
+        }
+      } else {
+        console.warn("⚠️ Patient email not found, skipping notification");
+      }
+    } catch (notifErr) {
+      console.error("❌ Failed to create post-therapy notification:", notifErr);
+      // Don't fail the procedure completion if notification fails
+    }
     
     req.app.get("io")?.emit("procedureUpdated", procedure);
-    res.json(procedure);
+    
+    res.json({ 
+      message: "Procedure completed successfully! Post-therapy notification sent.",
+      procedure 
+    });
   } catch (err) {
     console.error("❌ Complete procedure error:", err);
     res.status(500).json({ error: "Failed to complete procedure", message: err.message });

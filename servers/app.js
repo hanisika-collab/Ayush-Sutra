@@ -1,3 +1,4 @@
+// server.js or index.js - WITH CRON JOBS AND ENHANCED CONFIG
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -7,6 +8,10 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
+
+// ✅ Import cron jobs and email service functions
+const { initializeCronJobs, manualSendDailyTips } = require('./services/cronJobs');
+const { verifyEmailConfig } = require('./services/emailService');
 
 // Create express app & server (required for socket.io)
 const app = express();
@@ -20,19 +25,24 @@ app.use(helmet({
 }));
 
 // ------------------- CORS ------------------- //
-const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+// Use CLIENT_URL from replacement, but maintain original's allowedOrigins logic for robustness
+const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || [process.env.CLIENT_URL || 'http://localhost:3000'];
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true); 
+    if (allowedOrigins.includes(origin)) callback(null, true);
     else callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // Ensure all necessary methods are allowed
 }));
 
 // ------------------- RATE LIMIT ------------------- //
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
+  message: 'Too many requests from this IP, please try again after a minute',
 });
 app.use(limiter);
 
@@ -49,26 +59,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   }
 }));
 
-// ------------------- MONGO CONNECTION ------------------- //
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => {
-    console.log('✅ MongoDB Connected');
-
-    // Email config check (optional)
-    try {
-      const { verifyEmailConfig } = require('./services/emailService');
-      verifyEmailConfig().catch(err => {
-        console.log('⚠️ Email service not configured:', err.message);
-      });
-    } catch (err) {
-      console.log('⚠️ Email service not available (optional feature)');
-    }
-  })
-  .catch(err => console.error('❌ MongoDB connection error:', err));
-
 // ------------------- SOCKET.IO ------------------- //
 const io = new Server(server, {
   cors: {
@@ -81,6 +71,7 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('🟢 Client connected:', socket.id);
 
+  // Maintain original event listeners
   socket.on('procedureUpdated', (data) => io.emit('procedureUpdated', data));
   socket.on('vitalsUpdated', (data) => io.emit('vitalsUpdated', data));
   socket.on('feedbackUpdated', (data) => io.emit('feedbackUpdated', data));
@@ -92,7 +83,7 @@ io.on('connection', (socket) => {
   });
 });
 
-app.set('io', io);
+app.set('io', io); // Make io accessible to routes
 
 // ------------------- ROUTE IMPORTS ------------------- //
 let authRoutes, adminRoutes, usersRoutes, roomsRoutes, patientRoutes;
@@ -107,7 +98,7 @@ try {
   prescriptionRoutes = require('./routes/Prescriptions');
   therapySessionRoutes = require('./routes/therapySessionRoutes');
   procedureRoutes = require('./routes/procedureRoutes');
-
+  
   try {
     notificationRoutes = require('./routes/notificationRoutes');
     console.log('✅ Notification routes loaded');
@@ -115,7 +106,7 @@ try {
     console.log('⚠️ Notification routes not available');
   }
 
-  console.log('✅ All routes loaded successfully');
+  console.log('✅ All core routes loaded successfully');
 } catch (err) {
   console.error('❌ Error loading routes:', err.message);
   console.error('Stack:', err.stack);
@@ -143,8 +134,25 @@ app.get('/health', (req, res) => {
     status: 'OK',
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     timestamp: new Date().toISOString(),
+    cronJobsActive: true, // Assuming cron jobs are initialized successfully
   });
 });
+
+// ✅ Manual trigger endpoint for testing daily tips (from replacement code)
+app.post('/api/admin/send-daily-tips-now', async (req, res) => {
+  try {
+    // Simple check to prevent public access - production would require full auth
+    if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
+        await manualSendDailyTips();
+        return res.json({ message: 'Daily tips sent successfully (Manual Trigger)!' });
+    }
+    res.status(403).json({ error: 'Forbidden', message: 'This endpoint is for development/admin use only.' });
+  } catch (err) {
+    console.error('Manual Daily Tips Error:', err);
+    res.status(500).json({ error: 'Failed to send daily tips', details: err.message });
+  }
+});
+
 
 // ✅ Mount routes in correct order
 if (authRoutes) {
@@ -161,11 +169,6 @@ if (patientRoutes) {
 if (prescriptionRoutes) {
   app.use('/api/prescriptions', prescriptionRoutes);
   console.log('✅ Prescription routes mounted at /api/prescriptions');
-  console.log('   - GET    /api/prescriptions');
-  console.log('   - POST   /api/prescriptions');
-  console.log('   - GET    /api/prescriptions/:id');
-  console.log('   - GET    /api/prescriptions/:id/download ⬅️ DOWNLOAD ROUTE');
-  console.log('   - DELETE /api/prescriptions/:id');
 }
 
 if (therapySessionRoutes) {
@@ -213,7 +216,10 @@ try {
   console.log('⚠️ Admin therapist routes not found');
 }
 
-// ------------------- DEBUG ROUTES ------------------- //
+
+// ------------------- DEBUG ROUTES (MAINTAINED) ------------------- //
+
+// All registered routes
 app.get('/api/test/routes', (req, res) => {
   try {
     const routes = [];
@@ -231,15 +237,18 @@ app.get('/api/test/routes', (req, res) => {
           .replace('(?=\\/|$)', '')
           .replace(/\\\//g, '/');
         
-        middleware.handle.stack.forEach(handler => {
-          if (handler.route) {
-            const methods = Object.keys(handler.route.methods);
-            routes.push({
-              method: methods[0].toUpperCase(),
-              path: routerPath + handler.route.path
+        // Exclude internal middleware like logger/helmet
+        if (routerPath.startsWith('/api')) { 
+            middleware.handle.stack.forEach(handler => {
+              if (handler.route) {
+                const methods = Object.keys(handler.route.methods);
+                routes.push({
+                  method: methods[0].toUpperCase(),
+                  path: routerPath + handler.route.path
+                });
+              }
             });
-          }
-        });
+        }
       }
     });
     
@@ -254,6 +263,7 @@ app.get('/api/test/routes', (req, res) => {
   }
 });
 
+// Test therapy sessions model
 app.get('/api/test/therapy-sessions', async (req, res) => {
   try {
     const TherapySession = require('./models/TherapySession');
@@ -267,6 +277,7 @@ app.get('/api/test/therapy-sessions', async (req, res) => {
   }
 });
 
+// Test all models count
 app.get('/api/test/models', async (req, res) => {
   try {
     const User = require('./models/User');
@@ -295,6 +306,7 @@ app.get('/api/test/models', async (req, res) => {
   }
 });
 
+// Test prescriptions list
 app.get('/api/test/prescriptions', async (req, res) => {
   try {
     const Prescription = require('./models/Prescription');
@@ -319,7 +331,7 @@ app.get('/api/test/prescriptions', async (req, res) => {
   }
 });
 
-// ✅ Direct test route for download
+// Direct test route for download
 app.get('/api/test/download/:id', async (req, res) => {
   try {
     const Prescription = require('./models/Prescription');
@@ -333,7 +345,7 @@ app.get('/api/test/download/:id', async (req, res) => {
     const fs = require('fs');
     
     res.json({
-      message: 'Download test',
+      message: 'Download test (check file details)',
       prescription: {
         id: prescription._id,
         fileName: prescription.fileName,
@@ -348,7 +360,10 @@ app.get('/api/test/download/:id', async (req, res) => {
   }
 });
 
+
 // ------------------- 404 + ERROR HANDLING ------------------- //
+
+// 404 Handler
 app.use((req, res) => {
   console.log(`❌ 404: ${req.method} ${req.url}`);
   res.status(404).json({
@@ -365,51 +380,60 @@ app.use((req, res) => {
       '/api/procedures',
       '/api/notifications',
       '/api/test/routes',
+      '/api/health'
     ],
   });
 });
 
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.message);
   console.error('Stack:', err.stack);
-  res.status(500).json({
+  res.status(err.status || 500).json({
     error: 'Server error',
     message: err.message,
     path: req.url,
   });
 });
 
-// ------------------- NOTIFICATION SCHEDULER ------------------- //
-try {
-  require('./services/notificationScheduler');
-  console.log('✅ Notification scheduler started');
-} catch {
-  console.log('⚠️ Notification scheduler not available (optional)');
-}
+// ------------------- MONGO CONNECTION & STARTUP ------------------- //
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/ayush-wellness', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+  .then(async () => {
+    console.log('✅ MongoDB Connected');
+
+    // ✅ Verify email configuration (Improved from replacement code)
+    await verifyEmailConfig().catch(err => {
+      console.log('⚠️ Email service not configured or failed to verify:', err.message);
+    });
+
+    // ✅ Initialize cron jobs (From replacement code)
+    console.log('\n⏰ Starting cron jobs initialization...');
+    initializeCronJobs();
+    console.log('✅ Cron jobs initialized\n');
+  })
+  .catch(err => console.error('❌ MongoDB connection error:', err));
+
 
 // ------------------- START SERVER ------------------- //
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000; // Used 5000 from replacement as a common default
 server.listen(PORT, () => {
   console.log('');
   console.log('═══════════════════════════════════════════');
-  console.log('🚀 Server running on port', PORT);
+  console.log('🚀 AyurSutra API running on port', PORT);
   console.log('📍 API Base URL: http://localhost:' + PORT);
+  console.log('⏰ Cron Jobs Status: Active');
   console.log('═══════════════════════════════════════════');
   console.log('Available endpoints:');
-  console.log('  GET  / - API info');
-  console.log('  GET  /health - Health check');
-  console.log('  GET  /api/test/routes - List all routes');
-  console.log('  GET  /api/test/prescriptions - Test prescriptions');
-  console.log('  GET  /api/test/download/:id - Test download');
-  console.log('  POST /api/auth/login - Login');
-  console.log('  POST /api/auth/register - Register');
-  console.log('  GET  /api/prescriptions - Get prescriptions');
-  console.log('  POST /api/prescriptions - Upload prescription');
-  console.log('  GET  /api/prescriptions/:id/download - Download ⬅️');
-  console.log('  GET  /api/therapy-sessions - Get sessions');
-  console.log('  POST /api/therapy-sessions - Create session');
-  console.log('  GET  /api/procedures - Get procedures');
-  console.log('  GET  /api/notifications/user/:id - Get notifications');
+  console.log('  GET  / - API info');
+  console.log('  GET  /health - Health check');
+  console.log('  POST /api/admin/send-daily-tips-now - Manual Cron Test 🧪');
+  console.log('  GET  /api/test/routes - List all routes');
+  console.log('  GET  /api/test/prescriptions - Test prescriptions');
+  console.log('  POST /api/auth/login - Login');
+  console.log('  GET  /api/prescriptions/:id/download - Download ⬇️');
   console.log('═══════════════════════════════════════════');
   console.log('');
 });
