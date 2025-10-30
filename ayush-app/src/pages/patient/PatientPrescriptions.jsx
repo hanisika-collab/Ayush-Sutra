@@ -1,4 +1,4 @@
-// src/pages/patient/PatientPrescriptions.jsx
+// src/pages/patient/PatientPrescriptions.jsx - FIXED VERSION
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -33,63 +33,41 @@ const PatientPrescriptions = () => {
   const [dateFilter, setDateFilter] = useState("");
   const [sortBy, setSortBy] = useState("newest");
 
-  // Get current user
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = currentUser._id || currentUser.id || localStorage.getItem("userId");
 
-  // Fetch prescriptions
-// In PatientPrescriptions.jsx, update the fetchPrescriptions function:
+  // ✅ FIXED: Fetch prescriptions with proper authentication
+  const fetchPrescriptions = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-const fetchPrescriptions = async () => {
-  try {
-    setLoading(true);
-    setError("");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Please login to view prescriptions");
+        setLoading(false);
+        return;
+      }
 
-    const token = localStorage.getItem("token");
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const headers = { Authorization: `Bearer ${token}` };
 
-    // Fetch all prescriptions
-    const res = await API.get("/prescriptions", { headers });
-    
-    console.log("📄 Fetched all prescriptions:", res.data);
-
-    const allPrescriptions = res.data || [];
-    
-    // Filter prescriptions for current patient
-    // Match by patient ID or patient name
-    const myPrescriptions = allPrescriptions.filter(prescription => {
-      // Check if patientId matches current user
-      if (prescription.patientId?._id === userId) return true;
-      if (prescription.patientId?.name === currentUser.name) return true;
+      // ✅ Backend now filters by patient automatically for patient role
+      const res = await API.get("/prescriptions", { headers });
       
-      // Also check if uploadedBy is therapist or doctor (not admin)
-      const uploaderRole = prescription.uploadedBy?.role;
-      const isFromTherapistOrDoctor = uploaderRole === 'therapist' || uploaderRole === 'doctor';
-      
-      return isFromTherapistOrDoctor && (
-        prescription.patientId?._id === userId || 
-        prescription.patientId?.name === currentUser.name
-      );
-    });
+      console.log("📄 Fetched prescriptions:", res.data);
 
-    console.log("📄 My prescriptions:", myPrescriptions);
-    setPrescriptions(myPrescriptions);
-    setFilteredPrescriptions(myPrescriptions);
-  } catch (err) {
-    console.error("❌ Fetch prescriptions error:", err);
-    setError(err.response?.data?.error || "Failed to fetch prescriptions");
-  } finally {
-    setLoading(false);
-  }
-};
-
-  useEffect(() => {
-    if (userId || currentUser.name) {
-      fetchPrescriptions();
-    } else {
-      setError("User information not found. Please login again.");
+      setPrescriptions(res.data || []);
+      setFilteredPrescriptions(res.data || []);
+    } catch (err) {
+      console.error("❌ Fetch prescriptions error:", err);
+      setError(err.response?.data?.error || "Failed to fetch prescriptions");
+    } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchPrescriptions();
   }, []);
 
   // Filter and search prescriptions
@@ -133,10 +111,110 @@ const fetchPrescriptions = async () => {
     setFilteredPrescriptions(filtered);
   }, [searchTerm, dateFilter, sortBy, prescriptions]);
 
-  const handleDownload = (prescription) => {
-    // Open file in new tab
-    window.open(prescription.filePath, "_blank");
-  };
+  // ✅ FIXED: Download function using dedicated download route
+// Add this helper function to both PatientPrescriptions.jsx and TherapistPrescriptions.jsx
+
+// ✅ FIXED: Download function with proper error handling
+const handleDownload = async (prescription) => {
+  try {
+    console.log("📥 Starting download for:", prescription._id);
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setError("Please login to download files");
+      return;
+    }
+
+    // Build download URL
+    const downloadUrl = `${API.defaults.baseURL}/prescriptions/${prescription._id}/download`;
+    console.log("Download URL:", downloadUrl);
+
+    // Fetch with authentication
+    const response = await fetch(downloadUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    console.log("Response status:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(errorData.error || `Download failed: ${response.status}`);
+    }
+
+    // Get filename from response headers or use default
+    const contentDisposition = response.headers.get('content-disposition');
+    let fileName = prescription.fileName;
+    
+    if (contentDisposition) {
+      const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
+      if (matches && matches[1]) {
+        fileName = matches[1];
+      }
+    }
+
+    // Create blob and download
+    const blob = await response.blob();
+    console.log("Blob created, size:", blob.size);
+    
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+
+    console.log("✅ Download successful:", fileName);
+  } catch (err) {
+    console.error("❌ Download error:", err);
+    setError(err.message || "Failed to download file. Please try again.");
+  }
+};
+
+// ✅ ALTERNATIVE: Simple direct download (if above doesn't work)
+const handleDownloadSimple = (prescription) => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    setError("Please login to download files");
+    return;
+  }
+
+  // Open download in new window with auth token
+  const downloadUrl = `${API.defaults.baseURL}/prescriptions/${prescription._id}/download`;
+  
+  // Create hidden iframe for download
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = downloadUrl;
+  
+  // Add auth header via fetch then blob URL
+  fetch(downloadUrl, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  .then(response => response.blob())
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = prescription.fileName;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  })
+  .catch(err => {
+    console.error("Download error:", err);
+    setError("Failed to download file");
+  });
+};
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -327,7 +405,9 @@ const fetchPrescriptions = async () => {
                             {prescription.uploadedBy?.name || "Unknown"}
                             <br />
                             <small className="text-muted">
-                              {prescription.uploadedBy?.email || ""}
+                              {prescription.uploadedBy?.role === 'doctor' ? 'Doctor' : 
+                               prescription.uploadedBy?.role === 'therapist' ? 'Therapist' : 
+                               'Staff'}
                             </small>
                           </div>
                         </td>
@@ -356,7 +436,7 @@ const fetchPrescriptions = async () => {
                             variant="outline-success"
                             size="sm"
                             onClick={() => handleDownload(prescription)}
-                            title="View/Download"
+                            title="Download"
                           >
                             <Download size={16} />
                           </Button>
@@ -378,10 +458,10 @@ const fetchPrescriptions = async () => {
                     📋 About Your Prescriptions
                   </h6>
                   <p className="small text-muted mb-0">
-                    Your doctor uploads prescriptions and medical documents here
+                    Your doctor or therapist uploads prescriptions and medical documents here
                     for your reference. You can view and download them anytime.
                     If you have any questions about a prescription, please
-                    contact your doctor during your next appointment.
+                    contact your healthcare provider during your next appointment.
                   </p>
                 </Col>
                 <Col md={4} className="text-center d-flex align-items-center justify-content-center">

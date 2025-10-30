@@ -1,4 +1,4 @@
-// src/pages/therapist/TherapistPrescriptions.jsx
+// src/pages/therapist/TherapistPrescriptions.jsx - FIXED VERSION
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -51,6 +51,7 @@ const TherapistPrescriptions = () => {
     fetchMyPatientsAndPrescriptions();
   }, []);
 
+  // ✅ FIXED: Fetch patients and prescriptions
   const fetchMyPatientsAndPrescriptions = async () => {
     try {
       setLoading(true);
@@ -76,9 +77,10 @@ const TherapistPrescriptions = () => {
       });
 
       const patientsList = Array.from(patientMap.values());
+      console.log("👥 My patients:", patientsList.length);
       setMyPatients(patientsList);
 
-      // Fetch all prescriptions
+      // Fetch my prescriptions
       const prescRes = await API.get("/prescriptions", { headers });
       const allPrescriptions = prescRes.data || [];
 
@@ -87,6 +89,7 @@ const TherapistPrescriptions = () => {
         (p) => p.uploadedBy?._id === userId || p.uploadedBy === userId
       );
 
+      console.log("📄 My prescriptions:", myPrescriptions.length);
       setPrescriptions(myPrescriptions);
     } catch (err) {
       console.error("❌ Fetch error:", err);
@@ -105,6 +108,7 @@ const TherapistPrescriptions = () => {
     }
   };
 
+  // ✅ FIXED: Upload with proper authentication
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -133,7 +137,7 @@ const TherapistPrescriptions = () => {
         },
       });
 
-      setSuccess("Prescription uploaded successfully!");
+      setSuccess("Prescription uploaded successfully! Email sent to patient.");
       setFormData({ patientId: "", notes: "", file: null });
       
       // Reset file input
@@ -141,6 +145,8 @@ const TherapistPrescriptions = () => {
       if (fileInput) fileInput.value = "";
 
       fetchMyPatientsAndPrescriptions();
+      
+      setTimeout(() => setSuccess(""), 5000);
     } catch (err) {
       console.error("❌ Upload error:", err);
       setError(err.response?.data?.error || "Upload failed");
@@ -172,8 +178,42 @@ const TherapistPrescriptions = () => {
     setShowModal(true);
   };
 
-  const handleDownload = (prescription) => {
-    window.open(prescription.filePath, "_blank");
+  // ✅ FIXED: Download with authentication
+  const handleDownload = async (prescription) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Authentication required");
+        return;
+      }
+
+      const response = await fetch(
+        `${API.defaults.baseURL}/prescriptions/${prescription._id}/download`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = prescription.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("❌ Download error:", err);
+      setError("Failed to download file");
+    }
   };
 
   const getFileExtension = (fileName) => {
@@ -280,6 +320,11 @@ const TherapistPrescriptions = () => {
                               </option>
                             ))}
                           </Form.Select>
+                          {myPatients.length === 0 && (
+                            <Form.Text className="text-warning">
+                              No patients assigned yet. Schedule a session first.
+                            </Form.Text>
+                          )}
                         </Form.Group>
                       </Col>
                       <Col md={4}>
@@ -293,7 +338,7 @@ const TherapistPrescriptions = () => {
                             required
                           />
                           <Form.Text className="text-muted">
-                            Supported: PDF, JPG, PNG, DOC
+                            Supported: PDF, JPG, PNG, DOC (Max 10MB)
                           </Form.Text>
                         </Form.Group>
                       </Col>
@@ -313,7 +358,7 @@ const TherapistPrescriptions = () => {
                     <Button
                       type="submit"
                       variant="success"
-                      disabled={uploading}
+                      disabled={uploading || myPatients.length === 0}
                       className="px-4"
                     >
                       {uploading ? (

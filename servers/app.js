@@ -15,7 +15,9 @@ const server = http.createServer(app);
 // ------------------- MIDDLEWARE ------------------- //
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // ------------------- CORS ------------------- //
 const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
@@ -40,6 +42,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// ✅ Static files BEFORE routes
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+}));
+
 // ------------------- MONGO CONNECTION ------------------- //
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
@@ -48,7 +57,7 @@ mongoose.connect(process.env.MONGO_URI, {
   .then(() => {
     console.log('✅ MongoDB Connected');
 
-    // ✅ Email config check (optional)
+    // Email config check (optional)
     try {
       const { verifyEmailConfig } = require('./services/emailService');
       verifyEmailConfig().catch(err => {
@@ -72,12 +81,9 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('🟢 Client connected:', socket.id);
 
-  // Real-time updates
   socket.on('procedureUpdated', (data) => io.emit('procedureUpdated', data));
   socket.on('vitalsUpdated', (data) => io.emit('vitalsUpdated', data));
   socket.on('feedbackUpdated', (data) => io.emit('feedbackUpdated', data));
-
-  // Notifications
   socket.on('notificationCreated', (data) => io.emit('notificationCreated', data));
   socket.on('notificationRead', (data) => io.emit('notificationRead', data));
 
@@ -86,7 +92,7 @@ io.on('connection', (socket) => {
   });
 });
 
-app.set('io', io); // Make io accessible in routes
+app.set('io', io);
 
 // ------------------- ROUTE IMPORTS ------------------- //
 let authRoutes, adminRoutes, usersRoutes, roomsRoutes, patientRoutes;
@@ -102,7 +108,6 @@ try {
   therapySessionRoutes = require('./routes/therapySessionRoutes');
   procedureRoutes = require('./routes/procedureRoutes');
 
-  // Optional: Notifications
   try {
     notificationRoutes = require('./routes/notificationRoutes');
     console.log('✅ Notification routes loaded');
@@ -113,6 +118,7 @@ try {
   console.log('✅ All routes loaded successfully');
 } catch (err) {
   console.error('❌ Error loading routes:', err.message);
+  console.error('Stack:', err.stack);
   process.exit(1);
 }
 
@@ -124,6 +130,7 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       admin: '/api/admin',
       patients: '/api/patients',
+      prescriptions: '/api/prescriptions',
       therapySessions: '/api/therapy-sessions',
       procedures: '/api/procedures',
       notifications: '/api/notifications',
@@ -131,7 +138,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
@@ -140,37 +146,114 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Core routes
-if (authRoutes) app.use('/api/auth', authRoutes);
-if (adminRoutes) app.use('/api/admin', adminRoutes);
-if (usersRoutes) app.use('/api/admin/users', usersRoutes);
-if (roomsRoutes) app.use('/api/admin/rooms', roomsRoutes);
-
-// Optional admin subroutes
-try {
-  app.use('/api/admin/doctors', require('./routes/admin/doctors'));
-  app.use('/api/admin/therapists', require('./routes/admin/therapists'));
-} catch {
-  console.log('⚠️ Admin doctor/therapist routes not found');
+// ✅ Mount routes in correct order
+if (authRoutes) {
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes mounted at /api/auth');
 }
 
-// Domain routes
-if (patientRoutes) app.use('/api/patients', patientRoutes);
-if (prescriptionRoutes) app.use('/api/prescriptions', prescriptionRoutes);
+if (patientRoutes) {
+  app.use('/api/patients', patientRoutes);
+  console.log('✅ Patient routes mounted at /api/patients');
+}
+
+// ✅ CRITICAL: Prescriptions BEFORE admin
+if (prescriptionRoutes) {
+  app.use('/api/prescriptions', prescriptionRoutes);
+  console.log('✅ Prescription routes mounted at /api/prescriptions');
+  console.log('   - GET    /api/prescriptions');
+  console.log('   - POST   /api/prescriptions');
+  console.log('   - GET    /api/prescriptions/:id');
+  console.log('   - GET    /api/prescriptions/:id/download ⬅️ DOWNLOAD ROUTE');
+  console.log('   - DELETE /api/prescriptions/:id');
+}
+
 if (therapySessionRoutes) {
   app.use('/api/therapy-sessions', therapySessionRoutes);
   console.log('✅ Therapy sessions route mounted at /api/therapy-sessions');
 }
-if (procedureRoutes) app.use('/api/procedures', procedureRoutes);
+
+if (procedureRoutes) {
+  app.use('/api/procedures', procedureRoutes);
+  console.log('✅ Procedure routes mounted at /api/procedures');
+}
+
 if (notificationRoutes) {
   app.use('/api/notifications', notificationRoutes);
   console.log('✅ Notifications route mounted at /api/notifications');
 }
 
-// Static uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+if (adminRoutes) {
+  app.use('/api/admin', adminRoutes);
+  console.log('✅ Admin routes mounted at /api/admin');
+}
+
+if (usersRoutes) {
+  app.use('/api/admin/users', usersRoutes);
+  console.log('✅ User management routes mounted at /api/admin/users');
+}
+
+if (roomsRoutes) {
+  app.use('/api/admin/rooms', roomsRoutes);
+  console.log('✅ Room routes mounted at /api/admin/rooms');
+}
+
+// Optional admin subroutes
+try {
+  app.use('/api/admin/doctors', require('./routes/admin/doctors'));
+  console.log('✅ Doctor routes mounted');
+} catch {
+  console.log('⚠️ Admin doctor routes not found');
+}
+
+try {
+  app.use('/api/admin/therapists', require('./routes/admin/therapists'));
+  console.log('✅ Therapist routes mounted');
+} catch {
+  console.log('⚠️ Admin therapist routes not found');
+}
 
 // ------------------- DEBUG ROUTES ------------------- //
+app.get('/api/test/routes', (req, res) => {
+  try {
+    const routes = [];
+    
+    app._router.stack.forEach(middleware => {
+      if (middleware.route) {
+        const methods = Object.keys(middleware.route.methods);
+        routes.push({
+          method: methods[0].toUpperCase(),
+          path: middleware.route.path
+        });
+      } else if (middleware.name === 'router') {
+        const routerPath = middleware.regexp.source
+          .replace('\\/?', '')
+          .replace('(?=\\/|$)', '')
+          .replace(/\\\//g, '/');
+        
+        middleware.handle.stack.forEach(handler => {
+          if (handler.route) {
+            const methods = Object.keys(handler.route.methods);
+            routes.push({
+              method: methods[0].toUpperCase(),
+              path: routerPath + handler.route.path
+            });
+          }
+        });
+      }
+    });
+    
+    res.json({
+      message: 'All registered routes',
+      totalRoutes: routes.length,
+      routes: routes.sort((a, b) => a.path.localeCompare(b.path)),
+      prescriptionRoutes: routes.filter(r => r.path.includes('prescription'))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/test/therapy-sessions', async (req, res) => {
   try {
     const TherapySession = require('./models/TherapySession');
@@ -189,19 +272,79 @@ app.get('/api/test/models', async (req, res) => {
     const User = require('./models/User');
     const TherapySession = require('./models/TherapySession');
     const ProcedureSession = require('./models/ProcedureSession');
+    const Prescription = require('./models/Prescription');
 
-    const [users, sessions, procedures] = await Promise.all([
+    const [users, sessions, procedures, prescriptions] = await Promise.all([
       User.countDocuments(),
       TherapySession.countDocuments(),
       ProcedureSession.countDocuments(),
+      Prescription.countDocuments(),
     ]);
 
     res.json({
-      models: { users, therapySessions: sessions, procedureSessions: procedures },
+      models: { 
+        users, 
+        therapySessions: sessions, 
+        procedureSessions: procedures,
+        prescriptions
+      },
       status: 'All models loaded',
     });
   } catch (err) {
     res.status(500).json({ error: 'Model error', message: err.message });
+  }
+});
+
+app.get('/api/test/prescriptions', async (req, res) => {
+  try {
+    const Prescription = require('./models/Prescription');
+    const prescriptions = await Prescription.find()
+      .populate('patientId', 'name email role')
+      .populate('uploadedBy', 'name email role')
+      .limit(5);
+    
+    res.json({
+      message: 'Prescription routes test',
+      totalPrescriptions: await Prescription.countDocuments(),
+      samplePrescriptions: prescriptions.map(p => ({
+        id: p._id,
+        fileName: p.fileName,
+        patientName: p.patientId?.name || 'N/A',
+        uploaderName: p.uploadedBy?.name || 'N/A',
+        downloadUrl: `/api/prescriptions/${p._id}/download`
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Test error', message: err.message });
+  }
+});
+
+// ✅ Direct test route for download
+app.get('/api/test/download/:id', async (req, res) => {
+  try {
+    const Prescription = require('./models/Prescription');
+    const prescription = await Prescription.findById(req.params.id);
+    
+    if (!prescription) {
+      return res.status(404).json({ error: 'Prescription not found' });
+    }
+    
+    const filePath = path.join(__dirname, prescription.filePath);
+    const fs = require('fs');
+    
+    res.json({
+      message: 'Download test',
+      prescription: {
+        id: prescription._id,
+        fileName: prescription.fileName,
+        filePath: prescription.filePath,
+        fullPath: filePath,
+        fileExists: fs.existsSync(filePath)
+      },
+      downloadUrl: `/api/prescriptions/${prescription._id}/download`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -212,13 +355,16 @@ app.use((req, res) => {
     error: 'Not Found',
     path: req.url,
     method: req.method,
+    message: 'This route does not exist',
     availableRoutes: [
       '/api/auth',
       '/api/admin',
       '/api/patients',
+      '/api/prescriptions',
       '/api/therapy-sessions',
       '/api/procedures',
       '/api/notifications',
+      '/api/test/routes',
     ],
   });
 });
@@ -252,7 +398,14 @@ server.listen(PORT, () => {
   console.log('Available endpoints:');
   console.log('  GET  / - API info');
   console.log('  GET  /health - Health check');
+  console.log('  GET  /api/test/routes - List all routes');
+  console.log('  GET  /api/test/prescriptions - Test prescriptions');
+  console.log('  GET  /api/test/download/:id - Test download');
   console.log('  POST /api/auth/login - Login');
+  console.log('  POST /api/auth/register - Register');
+  console.log('  GET  /api/prescriptions - Get prescriptions');
+  console.log('  POST /api/prescriptions - Upload prescription');
+  console.log('  GET  /api/prescriptions/:id/download - Download ⬅️');
   console.log('  GET  /api/therapy-sessions - Get sessions');
   console.log('  POST /api/therapy-sessions - Create session');
   console.log('  GET  /api/procedures - Get procedures');
