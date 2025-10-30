@@ -52,6 +52,18 @@ const TherapistSidebar = () => {
       icon: <List size={18} />,
       label: "All Patients",
     },
+    // <Nav.Link
+    //       as={Link}
+    //       to="/therapist-patient-registration"
+    //       className={`text-white mb-2 rounded ${
+    //         isActive("/therapist-patient-registration") ? "bg-light bg-opacity-25" : ""
+    //       }`}
+    //     ></Nav.Link>
+    {
+      path: "/therapist-patient-registration",
+      icon: <PersonPlus size={18} />,
+      label: "Register Patient",
+    },
   ];
 
   // Additional items for doctors AND therapists - UPDATED

@@ -23,12 +23,13 @@ import {
   Person,
   Telephone,
   Envelope,
+  PersonPlus,
 } from "react-bootstrap-icons";
 import { useNavigate } from "react-router-dom";
 import TherapistSidebar from "../../components/TherapistSidebar";
 import Header from "../../components/Header";
 import API from "../../api";
-
+import { Link } from "react-router-dom";
 const TherapistPatients = () => {
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
@@ -160,27 +161,38 @@ const TherapistPatients = () => {
         <Header title="My Patients" />
         <Container className="py-4">
           {/* Header Section */}
-          <Card className="mb-4 shadow-sm border-0 rounded-4">
-            <Card.Body>
-              <Row className="align-items-center">
-                <Col md={8}>
-                  <h4 className="mb-2">
-                    <People className="me-2" />
-                    Patients Under My Care
-                  </h4>
-                  <p className="text-muted mb-0">
-                    View and manage patients assigned to you
-                  </p>
-                </Col>
-                <Col md={4} className="text-end">
-                  <Badge bg="primary" className="fs-6 px-3 py-2">
-                    {filteredPatients.length} Patient
-                    {filteredPatients.length !== 1 ? "s" : ""}
-                  </Badge>
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
+        <Card className="mb-4 shadow-sm border-0 rounded-4">
+                    <Card.Body>
+                      <Row className="align-items-center">
+                        <Col md={6}>
+                          <h4 className="mb-2">
+                            <People className="me-2" />
+                            Patients Under My Care
+                          </h4>
+                          <p className="text-muted mb-0">
+                            View and manage patients assigned to you
+                          </p>
+                        </Col>
+                        <Col md={6} className="text-end">
+                          {/* ✅ NEW: Add Patient Registration Button */}
+                          <Button
+                            as={Link}
+                            to="/therapist-patient-registration"
+                            variant="success"
+                            className="me-2"
+                          >
+                            <PersonPlus className="me-2" />
+                            Register New Patient
+                          </Button>
+                          <Badge bg="primary" className="fs-6 px-3 py-2">
+                            {filteredPatients.length} Patient
+                            {filteredPatients.length !== 1 ? "s" : ""}
+                          </Badge>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+
 
           {error && (
             <Alert variant="danger" dismissible onClose={() => setError("")}>
