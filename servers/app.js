@@ -88,6 +88,7 @@ app.set('io', io); // Make io accessible to routes
 // ------------------- ROUTE IMPORTS ------------------- //
 let authRoutes, adminRoutes, usersRoutes, roomsRoutes, patientRoutes;
 let prescriptionRoutes, therapySessionRoutes, procedureRoutes, notificationRoutes;
+let appointmentRoutes; // <-- Declared here
 
 try {
   authRoutes = require('./routes/auth');
@@ -98,7 +99,7 @@ try {
   prescriptionRoutes = require('./routes/Prescriptions');
   therapySessionRoutes = require('./routes/therapySessionRoutes');
   procedureRoutes = require('./routes/procedureRoutes');
-  
+  appointmentRoutes = require('./routes/appointmentRoutes'); // <-- Imported here
   try {
     notificationRoutes = require('./routes/notificationRoutes');
     console.log('✅ Notification routes loaded');
@@ -125,6 +126,7 @@ app.get('/', (req, res) => {
       therapySessions: '/api/therapy-sessions',
       procedures: '/api/procedures',
       notifications: '/api/notifications',
+      appointments: '/api/appointments', // <-- Added
     },
   });
 });
@@ -184,6 +186,11 @@ if (procedureRoutes) {
 if (notificationRoutes) {
   app.use('/api/notifications', notificationRoutes);
   console.log('✅ Notifications route mounted at /api/notifications');
+}
+
+if (appointmentRoutes) {
+  app.use('/api/appointments', appointmentRoutes); // <-- Mounted here
+  console.log('✅ Appointment routes mounted at /api/appointments'); // <-- Console log
 }
 
 if (adminRoutes) {
@@ -284,12 +291,15 @@ app.get('/api/test/models', async (req, res) => {
     const TherapySession = require('./models/TherapySession');
     const ProcedureSession = require('./models/ProcedureSession');
     const Prescription = require('./models/Prescription');
+    const Appointment = require('./models/Appointment'); // <-- Added for test
+    
 
-    const [users, sessions, procedures, prescriptions] = await Promise.all([
+    const [users, sessions, procedures, prescriptions, appointments] = await Promise.all([
       User.countDocuments(),
       TherapySession.countDocuments(),
       ProcedureSession.countDocuments(),
       Prescription.countDocuments(),
+      Appointment.countDocuments(), // <-- Added for test
     ]);
 
     res.json({
@@ -297,7 +307,8 @@ app.get('/api/test/models', async (req, res) => {
         users, 
         therapySessions: sessions, 
         procedureSessions: procedures,
-        prescriptions
+        prescriptions,
+        appointments, // <-- Added for test
       },
       status: 'All models loaded',
     });
@@ -379,6 +390,7 @@ app.use((req, res) => {
       '/api/therapy-sessions',
       '/api/procedures',
       '/api/notifications',
+      '/api/appointments', // <-- Added
       '/api/test/routes',
       '/api/health'
     ],
@@ -434,6 +446,9 @@ server.listen(PORT, () => {
   console.log('  GET  /api/test/prescriptions - Test prescriptions');
   console.log('  POST /api/auth/login - Login');
   console.log('  GET  /api/prescriptions/:id/download - Download ⬇️');
+  console.log('  POST /api/appointments - Book Appointment'); // <-- Added for clarity
+  console.log('  GET  /api/appointments - Get Patient Appointments'); // <-- Added for clarity
+  console.log('  PUT  /api/appointments/:id/cancel - Cancel Appointment'); // <-- Added for clarity
   console.log('═══════════════════════════════════════════');
   console.log('');
 });

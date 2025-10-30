@@ -9,6 +9,7 @@ import {
   FileText,
   Calendar,
   BoxArrowRight,
+  PlusCircle,
 } from "react-bootstrap-icons";
 
 const PatientSidebar = () => {
@@ -47,6 +48,16 @@ const PatientSidebar = () => {
   path: "/patient-therapies",
   icon: <FileText size={18} />,
   label: "Therapy Info",
+},// Add to menuItems array
+{
+  path: "/patient-appointments",
+  icon: <Calendar size={18} />,
+  label: "My Appointments",
+},
+{
+  path: "/patient-book-appointment",
+  icon: <PlusCircle size={18} />,
+  label: "Book Appointment",
 }
   ];
 

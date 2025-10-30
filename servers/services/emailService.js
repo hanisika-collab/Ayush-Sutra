@@ -135,7 +135,92 @@ const emailTemplates = {
         <p style="margin-top:20px;">Stay healthy,<br><strong>Ayush Wellness Team</strong></p>
       </div>
     `,
-  }),
+  }),'appointment-assignment': (data) => ({
+  subject: `New Appointment Assigned - ${data.patientName}`,
+  html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #28a745;">🌿 Ayush Wellness Center</h2>
+      <h3>New Appointment Assignment</h3>
+      <p>Dear Dr./Therapist ${data.staffName},</p>
+      <p>You have been assigned a new appointment:</p>
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #28a745;">
+        <p><strong>Patient:</strong> ${data.patientName}</p>
+        <p><strong>Type:</strong> ${data.appointmentType}</p>
+        <p><strong>Date:</strong> ${data.appointmentDate}</p>
+        <p><strong>Time:</strong> ${data.appointmentTime}</p>
+      </div>
+      <p>Please log in to the portal to review the patient's details and confirm the appointment.</p>
+      <p style="margin-top: 30px;">Best regards,<br><strong>Ayush Wellness Team</strong></p>
+    </div>
+  `
+}),
+
+'appointment-approved': (data) => ({
+  subject: `Appointment Confirmed - ${data.appointmentDate}`,
+  html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #28a745;">🌿 Ayush Wellness Center</h2>
+      <h3>✅ Your Appointment is Confirmed!</h3>
+      <p>Dear ${data.patientName},</p>
+      <p>Great news! Your appointment has been approved.</p>
+      <div style="background: #d4edda; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #28a745;">
+        <h4 style="margin-top: 0; color: #155724;">Appointment Details</h4>
+        <p><strong>📅 Date:</strong> ${data.appointmentDate}</p>
+        <p><strong>🕐 Time:</strong> ${data.appointmentTime}</p>
+        <p><strong>💆 Therapy:</strong> ${data.therapyType}</p>
+        <p><strong>📍 Location:</strong> ${data.location}</p>
+      </div>
+      <h4>Important Reminders:</h4>
+      <ul>
+        <li>Please arrive 10 minutes before your scheduled time</li>
+        <li>Bring any previous medical reports or prescriptions</li>
+        <li>Wear comfortable, loose clothing</li>
+        <li>If you need to reschedule, please contact us at least 24 hours in advance</li>
+      </ul>
+      <p>We look forward to seeing you!</p>
+      <p style="margin-top: 30px;">Best regards,<br><strong>Ayush Wellness Team</strong></p>
+    </div>
+  `
+}),
+
+'appointment-rejected': (data) => ({
+  subject: `Appointment Request Update - ${data.appointmentDate}`,
+  html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #28a745;">🌿 Ayush Wellness Center</h2>
+      <h3>Appointment Request Update</h3>
+      <p>Dear ${data.patientName},</p>
+      <p>Thank you for your appointment request for ${data.appointmentDate}.</p>
+      <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+        <p>Unfortunately, we are unable to confirm your appointment at the requested time.</p>
+        <p><strong>Reason:</strong> ${data.rejectionReason}</p>
+      </div>
+      <p>We would be happy to help you find an alternative time. Please contact us or submit a new appointment request with different preferred dates.</p>
+      <p><strong>Contact Us:</strong></p>
+      <p>📞 Phone: +91 1234567890<br>
+      📧 Email: appointments@ayushwellness.com</p>
+      <p style="margin-top: 30px;">Best regards,<br><strong>Ayush Wellness Team</strong></p>
+    </div>
+  `
+}),
+
+'appointment-cancelled': (data) => ({
+  subject: `Appointment Cancelled - ${data.appointmentDate}`,
+  html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #28a745;">🌿 Ayush Wellness Center</h2>
+      <h3>Appointment Cancellation</h3>
+      <p>Dear ${data.patientName},</p>
+      <p>Your appointment scheduled for ${data.appointmentDate} has been cancelled.</p>
+      <div style="background: #f8d7da; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #dc3545;">
+        <p><strong>Reason:</strong> ${data.cancellationReason}</p>
+      </div>
+      <p>If you would like to reschedule, please contact us or submit a new appointment request through the patient portal.</p>
+      <p>We apologize for any inconvenience.</p>
+      <p style="margin-top: 30px;">Best regards,<br><strong>Ayush Wellness Team</strong></p>
+    </div>
+  `
+}),
   
 
 };

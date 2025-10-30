@@ -32,6 +32,8 @@ import TherapistProcedures from "./pages/therapist/TherapistProcedures";
 import TherapyInfoPage from "./pages/patient/TherapyInfoPage";
 import TherapistPrescriptions from './pages/therapist/TherapistPrescriptions';
 import TherapistPatientRegistration from './pages/therapist/TherapistPatientRegistration';
+import BookAppointment from "./pages/patient/BookAppointment";
+import PatientAppointments from "./pages/patient/PatientAppointments";
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem("token");
@@ -223,6 +225,23 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["doctor", "therapist"]}>
               <TherapistPatientRegistration />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patient-book-appointment"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <BookAppointment />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/patient-appointments"
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientAppointments />
             </ProtectedRoute>
           }
         />
