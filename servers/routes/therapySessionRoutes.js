@@ -148,6 +148,51 @@ router.post("/", async (req, res) => {
   }
 });
 
+
+// Add this route in therapySessionRoutes.js
+router.post('/:id/send-post-therapy-notification', async (req, res) => {
+  const session = await TherapySession.findById(req.params.id)
+    .populate('patientId', 'name email')
+    .populate('therapistId', 'name');
+  
+  if (session.status !== 'completed') {
+    return res.status(400).json({ error: 'Session must be completed first' });
+  }
+  
+  const notification = new Notification({
+    userId: session.patientId._id,
+    type: 'post-therapy',
+    title: `Post-Care: ${session.therapyType} Session`,
+    message: 'Your therapy session is complete. Please follow post-care instructions.',
+    channel: 'email',
+    scheduledFor: new Date(),
+    relatedSession: session._id,
+    metadata: {
+      therapyType: session.therapyType,
+      therapistName: session.therapistId?.name || 'Your therapist',
+      nextSession: 'To be scheduled'
+    }
+  });
+  
+  await notification.save();
+  
+  // Send email immediately
+  const emailResult = await sendEmail(
+    session.patientId.email,
+    'post-therapy',
+    {
+      patientName: session.patientId.name,
+      therapyType: session.therapyType,
+      nextSession: 'Please contact us to schedule'
+    }
+  );
+  
+  notification.status = emailResult.success ? 'sent' : 'failed';
+  notification.sentAt = new Date();
+  await notification.save();
+  
+  res.json({ message: 'Post-therapy notification sent', notification });
+});
 // --------------------------------------
 // 🔹 GET single session
 // --------------------------------------

@@ -70,6 +70,7 @@ const Sidebar = () => {
     { path: "/therapy-rooms", label: "Therapy Rooms", icon: <House /> },
     { path: "/therapy-sessions", label: "Therapy Sessions", icon: <Calendar3 /> },
     { path: "/procedure-tracker", label: "Procedure Tracker", icon: <ClipboardCheck /> },
+    // {path: "/prescriptions", label: "Prescriptions", icon: <ClipboardCheck />},
     { 
       path: "/notifications", 
       label: "Notifications", 

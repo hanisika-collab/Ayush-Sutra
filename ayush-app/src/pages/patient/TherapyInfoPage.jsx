@@ -49,6 +49,152 @@ const TherapyInfoPage = () => {
       ],
       bestFor: ['Vata imbalance', 'Stress and anxiety', 'Dry skin', 'Insomnia', 'Body aches']
     },
+    
+    virechana: {
+      name: 'Virechana',
+      icon: '🌿',
+      tagline: 'Therapeutic Purgation Therapy',
+      duration: '3-7 days (course)',
+      description: 'Virechana is a medicated purgation therapy and one of the five Panchakarma procedures. It cleanses the body by eliminating excess Pitta dosha and toxins through the intestinal tract. This controlled purification process uses herbal medicines to induce therapeutic elimination, resulting in deep detoxification and rejuvenation.',
+      benefits: [
+        'Eliminates excess Pitta and toxins from the body',
+        'Treats chronic skin disorders like psoriasis and eczema',
+        'Relieves chronic constipation and digestive issues',
+        'Beneficial for diabetes and metabolic disorders',
+        'Improves liver and gallbladder function',
+        'Reduces inflammation and acidity',
+        'Enhances mental clarity and emotional balance',
+        'Treats chronic fever and infections'
+      ],
+      process: [
+        'Pre-procedure preparation (Poorvakarma): 3-7 days of oil therapy (Snehana) and sweating therapy (Swedana)',
+        'Assessment of patient\'s readiness for purgation',
+        'Administration of Virechana medicine on empty stomach',
+        'Monitoring of purgation process (6-8 episodes expected)',
+        'Patient rest and observation during elimination',
+        'Post-procedure care (Paschatkarma): Gradual diet progression',
+        'Follow-up consultations to assess results',
+        'Rejuvenation therapy (Rasayana) after completion'
+      ],
+      preCare: [
+        'Complete medical evaluation required',
+        'Avoid during pregnancy, menstruation, or weakness',
+        'Follow preparatory diet for 3-7 days',
+        'Daily oil massage and steam therapy',
+        'Avoid strenuous activities during preparation',
+        'Stay near the facility during treatment',
+        'Inform about all medications and allergies',
+        'Mental preparation for the cleansing process'
+      ],
+      postCare: [
+        'Complete rest for 24 hours post-procedure',
+        'Follow prescribed diet plan (light, warm foods)',
+        'Avoid cold, heavy, spicy, or fermented foods',
+        'Gradual return to normal diet over 7 days',
+        'Continue warm water intake',
+        'Avoid sexual activity for prescribed period',
+        'No travel or strenuous work for 3-7 days',
+        'Take prescribed rejuvenating medicines',
+        'Regular follow-up appointments mandatory'
+      ],
+      bestFor: [
+        'Chronic skin diseases',
+        'Digestive disorders',
+        'Diabetes',
+        'Gout and arthritis',
+        'Liver disorders',
+        'Chronic fever',
+        'Hemorrhoids',
+        'Pitta imbalance'
+      ],
+      contraindications: [
+        'Pregnancy and breastfeeding',
+        'Menstruation',
+        'Children under 7 and elderly above 70',
+        'Severe weakness or debility',
+        'Recent surgery',
+        'Heart disease',
+        'Bleeding disorders',
+        'Active infections'
+      ]
+    },
+    
+    basti: {
+      name: 'Basti',
+      icon: '💧',
+      tagline: 'Medicated Enema Therapy',
+      duration: '8-30 days (course)',
+      description: 'Basti is considered the most powerful of all Panchakarma treatments. It involves administering herbal oils, decoctions, or medicated liquids through the rectal route. This therapy primarily balances Vata dosha, which governs all movement in the body, and is highly effective for neurological, musculoskeletal, and digestive disorders.',
+      benefits: [
+        'Balances Vata dosha effectively',
+        'Treats chronic constipation and IBS',
+        'Excellent for arthritis and joint pain',
+        'Beneficial for paralysis and neurological disorders',
+        'Relieves lower back pain and sciatica',
+        'Improves reproductive health',
+        'Enhances strength and immunity',
+        'Delays aging and promotes longevity',
+        'Treats infertility issues',
+        'Calms the nervous system'
+      ],
+      process: [
+        'Pre-procedure preparation (3-7 days of oil therapy and sweating)',
+        'Patient positioned in left lateral position',
+        'Administration of medicated oil or decoction through rectal route',
+        'Patient instructed to retain for prescribed duration',
+        'Two types: Anuvasana Basti (oil-based) and Niruha Basti (decoction-based)',
+        'Course typically includes 8, 16, or 30 sessions',
+        'Alternating pattern of oil and decoction Bastis',
+        'Daily monitoring of patient response',
+        'Post-procedure rest and observation',
+        'Gradual transition to normal routine'
+      ],
+      preCare: [
+        'Comprehensive medical evaluation',
+        'Empty bladder before procedure',
+        'Light meal 2-3 hours before (not on empty stomach)',
+        'Preparatory oil massage and steam therapy',
+        'Avoid during acute diarrhea or rectal bleeding',
+        'Inform about any abdominal surgeries',
+        'Mental relaxation before procedure',
+        'Wear comfortable, loose clothing'
+      ],
+      postCare: [
+        'Rest for 30-60 minutes after procedure',
+        'Do not suppress natural urges',
+        'Follow prescribed diet (warm, light, easily digestible)',
+        'Avoid cold foods, drinks, and environments',
+        'No strenuous physical activity on treatment days',
+        'Adequate sleep and rest',
+        'Avoid travel during treatment course',
+        'Continue for full prescribed course',
+        'Regular follow-ups with practitioner'
+      ],
+      bestFor: [
+        'Vata disorders',
+        'Chronic constipation',
+        'Paralysis and hemiplegia',
+        'Arthritis and rheumatism',
+        'Sciatica and back pain',
+        'Infertility',
+        'IBS and colitis',
+        'Neurological disorders',
+        'Muscle wasting',
+        'Sexual dysfunction'
+      ],
+      contraindications: [
+        'Pregnancy',
+        'Acute fever or infections',
+        'Severe diarrhea',
+        'Rectal bleeding or fissures',
+        'Recent abdominal surgery',
+        'Severe debility',
+        'Children under 7 years',
+        'Active inflammatory bowel disease',
+        'Hemorrhoids (acute phase)'
+      ]
+    },
+
     pizhichil: {
       name: 'Pizhichil',
       icon: '🛁',
@@ -90,6 +236,7 @@ const TherapyInfoPage = () => {
       ],
       bestFor: ['Arthritis', 'Neurological disorders', 'Anti-aging', 'Paralysis', 'Chronic pain']
     },
+    
     shirodhara: {
       name: 'Shirodhara',
       icon: '🧘',
@@ -131,6 +278,7 @@ const TherapyInfoPage = () => {
       ],
       bestFor: ['Insomnia', 'Anxiety', 'Migraines', 'Mental fatigue', 'PTSD', 'Hypertension']
     },
+    
     swedana: {
       name: 'Swedana',
       icon: '♨️',
@@ -172,6 +320,7 @@ const TherapyInfoPage = () => {
       ],
       bestFor: ['Detoxification', 'Weight loss', 'Skin problems', 'Respiratory issues', 'Arthritis']
     },
+    
     udvartana: {
       name: 'Udvartana',
       icon: '✨',
@@ -213,6 +362,7 @@ const TherapyInfoPage = () => {
       ],
       bestFor: ['Weight loss', 'Obesity', 'Cellulite', 'Skin disorders', 'Poor circulation']
     },
+    
     nasya: {
       name: 'Nasya',
       icon: '👃',
@@ -349,6 +499,26 @@ const TherapyInfoPage = () => {
                       ))}
                     </Accordion>
                   </div>
+
+                  {/* Contraindications (for Panchakarma therapies) */}
+                  {currentTherapy.contraindications && (
+                    <div className="mb-4">
+                      <h5 className="text-danger mb-3">⚠️ Contraindications</h5>
+                      <div className="alert alert-danger">
+                        <p className="mb-2"><strong>This therapy should NOT be performed if you have:</strong></p>
+                        <Row>
+                          {currentTherapy.contraindications.map((item, idx) => (
+                            <Col md={6} key={idx} className="mb-2">
+                              <div className="d-flex align-items-start">
+                                <span className="text-danger me-2">✗</span>
+                                <span>{item}</span>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    </div>
+                  )}
                 </Card.Body>
               </Card>
             </Col>

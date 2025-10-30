@@ -54,22 +54,27 @@ const TherapistSidebar = () => {
     },
   ];
 
-  // Additional items for doctors
-  const doctorMenuItems = [
+  // Additional items for doctors AND therapists - UPDATED
+  const prescriptionItem = {
+    path: "/prescriptions",
+    icon: <FileText size={18} />,
+    label: "Prescriptions",
+  };
+
+  const doctorOnlyItems = [
     {
       path: "/patient-registration",
       icon: <PersonPlus size={18} />,
       label: "Register Patient",
     },
-    {
-      path: "/prescriptions",
-      icon: <FileText size={18} />,
-      label: "Prescriptions",
-    },
   ];
 
-  const menuItems =
-    role === "doctor" ? [...baseMenuItems, ...doctorMenuItems] : baseMenuItems;
+  // Build menu items based on role
+  let menuItems = [...baseMenuItems, prescriptionItem];
+  
+  if (role === "doctor") {
+    menuItems = [...menuItems, ...doctorOnlyItems];
+  }
 
   return (
     <div

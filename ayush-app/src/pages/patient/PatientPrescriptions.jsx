@@ -38,42 +38,50 @@ const PatientPrescriptions = () => {
   const userId = currentUser._id || currentUser.id || localStorage.getItem("userId");
 
   // Fetch prescriptions
-  const fetchPrescriptions = async () => {
-    try {
-      setLoading(true);
-      setError("");
+// In PatientPrescriptions.jsx, update the fetchPrescriptions function:
 
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+const fetchPrescriptions = async () => {
+  try {
+    setLoading(true);
+    setError("");
 
-      // Fetch all prescriptions
-      const res = await API.get("/prescriptions", { headers });
+    const token = localStorage.getItem("token");
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    // Fetch all prescriptions
+    const res = await API.get("/prescriptions", { headers });
+    
+    console.log("📄 Fetched all prescriptions:", res.data);
+
+    const allPrescriptions = res.data || [];
+    
+    // Filter prescriptions for current patient
+    // Match by patient ID or patient name
+    const myPrescriptions = allPrescriptions.filter(prescription => {
+      // Check if patientId matches current user
+      if (prescription.patientId?._id === userId) return true;
+      if (prescription.patientId?.name === currentUser.name) return true;
       
-      console.log("📄 Fetched all prescriptions:", res.data);
-
-      // Filter prescriptions for current patient
-      // Note: We need to match against Patient model, not User model
-      // If your prescriptions use Patient collection, filter by checking patient info
-      const allPrescriptions = res.data || [];
+      // Also check if uploadedBy is therapist or doctor (not admin)
+      const uploaderRole = prescription.uploadedBy?.role;
+      const isFromTherapistOrDoctor = uploaderRole === 'therapist' || uploaderRole === 'doctor';
       
-      // Try to filter by patient name match (if patient info is populated)
-      const myPrescriptions = allPrescriptions.filter(prescription => {
-        // Check if patientId matches or patient name matches current user
-        if (prescription.patientId?._id === userId) return true;
-        if (prescription.patientId?.name === currentUser.name) return true;
-        return false;
-      });
+      return isFromTherapistOrDoctor && (
+        prescription.patientId?._id === userId || 
+        prescription.patientId?.name === currentUser.name
+      );
+    });
 
-      console.log("📄 My prescriptions:", myPrescriptions);
-      setPrescriptions(myPrescriptions);
-      setFilteredPrescriptions(myPrescriptions);
-    } catch (err) {
-      console.error("❌ Fetch prescriptions error:", err);
-      setError(err.response?.data?.error || "Failed to fetch prescriptions");
-    } finally {
-      setLoading(false);
-    }
-  };
+    console.log("📄 My prescriptions:", myPrescriptions);
+    setPrescriptions(myPrescriptions);
+    setFilteredPrescriptions(myPrescriptions);
+  } catch (err) {
+    console.error("❌ Fetch prescriptions error:", err);
+    setError(err.response?.data?.error || "Failed to fetch prescriptions");
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (userId || currentUser.name) {

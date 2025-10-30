@@ -117,7 +117,27 @@ const emailTemplates = {
         <p style="margin-top: 30px;">Best regards,<br><strong>Ayush Wellness Team</strong></p>
       </div>
     `
-  })
+  }),
+  'prescription-upload': (data) => ({
+    subject: `New Prescription Available - ${data.patientName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto;">
+        <h2 style="color:#28a745;">🌿 Ayush Wellness Center</h2>
+        <h3>New Prescription Uploaded</h3>
+        <p>Dear ${data.patientName},</p>
+        <p>Dr. ${data.uploadedByName || 'Your Doctor'} has uploaded a new prescription for you.</p>
+        <div style="background:#f8f9fa;padding:15px;border-left:4px solid #28a745;margin:20px 0;">
+          <p><strong>📄 File:</strong> ${data.fileName}</p>
+          <p><strong>🕒 Uploaded On:</strong> ${new Date().toLocaleString()}</p>
+          ${data.notes ? `<p><strong>🗒 Notes:</strong> ${data.notes}</p>` : ''}
+        </div>
+        <p>You can view and download it by logging into your patient portal.</p>
+        <p style="margin-top:20px;">Stay healthy,<br><strong>Ayush Wellness Team</strong></p>
+      </div>
+    `,
+  }),
+  
+
 };
 
 // Send email function

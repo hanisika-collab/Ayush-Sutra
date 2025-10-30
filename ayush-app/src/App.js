@@ -17,7 +17,7 @@ import TherapyRooms from "./pages/TherapyRooms";
 import TherapySessions from "./pages/TherapySessions";
 import ProcedureTracker from "./pages/ProcedureTracker";
 import Notifications from "./pages/Notifications";
-import PrescriptionAdmin from "./pages/PrescriptionAdmin";
+// import PrescriptionAdmin from "./pages/PrescriptionAdmin";
 
 // Patient Pages
 import PatientDashboard from "./pages/patient/PatientDashboard";
@@ -30,6 +30,7 @@ import TherapistDashboard from "./pages/therapist/TherapistDashboard";
 import TherapistPatients from "./pages/therapist/TherapistPatients";
 import TherapistProcedures from "./pages/therapist/TherapistProcedures";
 import TherapyInfoPage from "./pages/patient/TherapyInfoPage";
+import TherapistPrescriptions from './pages/therapist/TherapistPrescriptions';
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem("token");
@@ -146,14 +147,14 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
+        {/* <Route
           path="/prescriptions"
           element={
             <ProtectedRoute allowedRoles={["admin", "doctor"]}>
               <PrescriptionAdmin />
             </ProtectedRoute>
           }
-        />
+        /> */}
 
         {/* Doctor/Therapist Routes */}
         <Route
@@ -215,9 +216,10 @@ function App() {
           }
         />
         <Route path="/patient-therapies" element={<TherapyInfoPage />} />
-
+        <Route path="/prescriptions" element={<TherapistPrescriptions />} />
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
+
       </Routes>
     </Router>
   );
