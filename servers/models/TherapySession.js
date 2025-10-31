@@ -1,12 +1,17 @@
+// servers/models/TherapySession.js - WITH DOCTOR FIELD
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 const TherapySessionSchema = new Schema({
-  // ✅ IMPORTANT: Use "User" instead of "Patient" if your patients are stored in User model
   patientId: { 
     type: Schema.Types.ObjectId, 
-    ref: "User", // ✅ Changed from "Patient" to "User"
+    ref: "User",
     required: true 
+  },
+  // ✅ NEW: Doctor field (optional)
+  doctorId: { 
+    type: Schema.Types.ObjectId, 
+    ref: "User"
   },
   therapistId: { 
     type: Schema.Types.ObjectId, 
@@ -20,7 +25,7 @@ const TherapySessionSchema = new Schema({
   therapyType: { 
     type: String, 
     required: true 
-  }, // Abhyanga, Swedana, etc.
+  },
   startTime: { 
     type: Date, 
     required: true 
@@ -37,9 +42,10 @@ const TherapySessionSchema = new Schema({
   notes: String,
 }, { timestamps: true });
 
-// ✅ Add index for better query performance
+// ✅ Add indexes for better query performance
 TherapySessionSchema.index({ startTime: 1, status: 1 });
 TherapySessionSchema.index({ patientId: 1 });
 TherapySessionSchema.index({ therapistId: 1 });
+TherapySessionSchema.index({ doctorId: 1 }); // ✅ NEW: Index for doctor queries
 
 module.exports = mongoose.model("TherapySession", TherapySessionSchema);

@@ -1,7 +1,9 @@
-// servers/services/cronJobs.js - AUTOMATIC DAILY TIPS SCHEDULER
+// servers/services/cronJobs.js - COMPLETE AUTO-NOTIFICATION SYSTEM
 const cron = require('node-cron');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const TherapySession = require('../models/TherapySession');
+const ProcedureSession = require('../models/ProcedureSession');
 const { sendEmail } = require('./emailService');
 
 // Daily wellness tips collection
@@ -48,13 +50,14 @@ const dailyTips = [
   }
 ];
 
-// Function to send daily tips to all patients
+// =====================
+// DAILY TIPS - Send to all patients
+// =====================
 async function sendDailyTipsToAllPatients() {
   try {
     console.log('\n💡 ========== DAILY TIPS CRON JOB STARTED ==========');
     console.log(`🕐 Time: ${new Date().toLocaleString()}`);
     
-    // Get all active patients with email
     const patients = await User.find({ 
       role: 'patient', 
       email: { $exists: true, $ne: '' },
@@ -68,7 +71,6 @@ async function sendDailyTipsToAllPatients() {
     
     console.log(`👥 Found ${patients.length} patients`);
     
-    // Get random tip for today
     const randomIndex = Math.floor(Math.random() * dailyTips.length);
     const todayTip = dailyTips[randomIndex];
     
@@ -77,7 +79,6 @@ async function sendDailyTipsToAllPatients() {
     let successCount = 0;
     let failCount = 0;
     
-    // Send to each patient
     for (const patient of patients) {
       try {
         // Create notification
@@ -120,7 +121,6 @@ async function sendDailyTipsToAllPatients() {
           console.log(`❌ Failed to send to ${patient.email}: ${emailResult.error}`);
         }
         
-        // Small delay to avoid overwhelming email server
         await new Promise(resolve => setTimeout(resolve, 100));
         
       } catch (err) {
@@ -132,7 +132,6 @@ async function sendDailyTipsToAllPatients() {
     console.log('\n📊 ========== DAILY TIPS SUMMARY ==========');
     console.log(`✅ Successfully sent: ${successCount}/${patients.length}`);
     console.log(`❌ Failed: ${failCount}/${patients.length}`);
-    console.log(`📝 Tip: "${todayTip.title}"`);
     console.log('===========================================\n');
     
   } catch (err) {
@@ -140,12 +139,204 @@ async function sendDailyTipsToAllPatients() {
   }
 }
 
-// Function to send pending scheduled notifications
+// =====================
+// PRE-THERAPY NOTIFICATIONS - Send 24h before sessions
+// =====================
+async function sendPreTherapyNotifications() {
+  try {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setHours(tomorrow.getHours() + 24);
+    
+    // Find sessions scheduled for tomorrow
+    const upcomingSessions = await TherapySession.find({
+      startTime: {
+        $gte: now,
+        $lte: tomorrow
+      },
+      status: { $in: ['scheduled', 'in-progress'] }
+    })
+      .populate('patientId', 'name email')
+      .populate('therapistId', 'name')
+      .populate('roomId', 'name');
+    
+    if (upcomingSessions.length === 0) {
+      return;
+    }
+    
+    console.log(`\n🧘 Processing ${upcomingSessions.length} pre-therapy notifications...`);
+    
+    for (const session of upcomingSessions) {
+      try {
+        if (!session.patientId || !session.patientId.email) {
+          continue;
+        }
+        
+        // Check if notification already sent
+        const existingNotif = await Notification.findOne({
+          userId: session.patientId._id,
+          type: 'pre-therapy',
+          relatedSession: session._id,
+          status: { $in: ['sent', 'read'] }
+        });
+        
+        if (existingNotif) {
+          continue; // Already sent
+        }
+        
+        // Create notification
+        const notification = new Notification({
+          userId: session.patientId._id,
+          type: 'pre-therapy',
+          title: `Upcoming: ${session.therapyType} Session`,
+          message: `Your ${session.therapyType} session is scheduled for ${new Date(session.startTime).toLocaleString()}`,
+          channel: 'email',
+          scheduledFor: new Date(),
+          relatedSession: session._id,
+          status: 'pending',
+          metadata: {
+            therapyType: session.therapyType,
+            therapistName: session.therapistId?.name || 'TBA',
+            sessionTime: new Date(session.startTime).toLocaleString(),
+            roomName: session.roomId?.name || 'TBA'
+          }
+        });
+        
+        await notification.save();
+        
+        // Send email
+        const emailResult = await sendEmail(
+          session.patientId.email,
+          'pre-therapy',
+          {
+            patientName: session.patientId.name,
+            therapyType: session.therapyType,
+            sessionTime: new Date(session.startTime).toLocaleString(),
+            therapistName: session.therapistId?.name || 'TBA',
+            roomName: session.roomId?.name || 'TBA'
+          }
+        );
+        
+        notification.status = emailResult.success ? 'sent' : 'failed';
+        notification.sentAt = new Date();
+        notification.metadata.emailSent = emailResult.success;
+        notification.metadata.emailError = emailResult.error;
+        await notification.save();
+        
+        console.log(`${emailResult.success ? '✅' : '❌'} Pre-therapy notification for ${session.patientId.email}`);
+        
+      } catch (err) {
+        console.error(`❌ Error processing session ${session._id}:`, err.message);
+      }
+    }
+    
+  } catch (err) {
+    console.error('❌ Pre-therapy notifications error:', err);
+  }
+}
+
+// =====================
+// POST-THERAPY NOTIFICATIONS - Send after completed procedures
+// =====================
+async function sendPostTherapyNotifications() {
+  try {
+    const oneHourAgo = new Date();
+    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+    
+    // Find recently completed procedures without post-therapy notification
+    const completedProcedures = await ProcedureSession.find({
+      status: 'completed',
+      completedAt: { $gte: oneHourAgo }
+    })
+      .populate({
+        path: 'sessionId',
+        populate: [
+          { path: 'patientId', select: 'name email' },
+          { path: 'therapistId', select: 'name' }
+        ]
+      });
+    
+    if (completedProcedures.length === 0) {
+      return;
+    }
+    
+    console.log(`\n✨ Processing ${completedProcedures.length} post-therapy notifications...`);
+    
+    for (const procedure of completedProcedures) {
+      try {
+        const session = procedure.sessionId;
+        
+        if (!session || !session.patientId || !session.patientId.email) {
+          continue;
+        }
+        
+        // Check if notification already sent
+        const existingNotif = await Notification.findOne({
+          userId: session.patientId._id,
+          type: 'post-therapy',
+          relatedSession: session._id,
+          status: { $in: ['sent', 'read'] }
+        });
+        
+        if (existingNotif) {
+          continue; // Already sent
+        }
+        
+        // Create notification
+        const notification = new Notification({
+          userId: session.patientId._id,
+          type: 'post-therapy',
+          title: `Post-Therapy Care: ${session.therapyType}`,
+          message: `Thank you for completing your ${session.therapyType} session. Please follow the post-therapy guidelines for best results.`,
+          channel: 'email',
+          scheduledFor: new Date(),
+          relatedSession: session._id,
+          status: 'pending',
+          metadata: {
+            therapyType: session.therapyType,
+            therapistName: session.therapistId?.name || 'Our Team',
+            nextSession: 'To be scheduled'
+          }
+        });
+        
+        await notification.save();
+        
+        // Send email
+        const emailResult = await sendEmail(
+          session.patientId.email,
+          'post-therapy',
+          {
+            patientName: session.patientId.name,
+            therapyType: session.therapyType,
+            nextSession: 'To be scheduled'
+          }
+        );
+        
+        notification.status = emailResult.success ? 'sent' : 'failed';
+        notification.sentAt = new Date();
+        notification.metadata.emailSent = emailResult.success;
+        notification.metadata.emailError = emailResult.error;
+        await notification.save();
+        
+        console.log(`${emailResult.success ? '✅' : '❌'} Post-therapy notification for ${session.patientId.email}`);
+        
+      } catch (err) {
+        console.error(`❌ Error processing procedure ${procedure._id}:`, err.message);
+      }
+    }
+    
+  } catch (err) {
+    console.error('❌ Post-therapy notifications error:', err);
+  }
+}
+
+// =====================
+// SCHEDULED NOTIFICATIONS - Process pending notifications
+// =====================
 async function sendScheduledNotifications() {
   try {
     const now = new Date();
     
-    // Find notifications that are pending and scheduled for now or past
     const notifications = await Notification.find({
       status: 'pending',
       scheduledFor: { $lte: now }
@@ -195,48 +386,75 @@ async function sendScheduledNotifications() {
   }
 }
 
+// =====================
 // Initialize cron jobs
+// =====================
 function initializeCronJobs() {
   console.log('⏰ Initializing cron jobs...');
   
-  // ✅ DAILY TIPS - Send every day at 8:00 AM
-  // Pattern: minute hour day month dayOfWeek
-  // '0 8 * * *' means "At 08:00 every day"
+  // ✅ DAILY TIPS - Every day at 8:00 AM
   cron.schedule('0 8 * * *', () => {
     console.log('🔔 Daily tips cron triggered');
     sendDailyTipsToAllPatients();
   }, {
-    timezone: "Asia/Kolkata" // Change to your timezone
+    timezone: "Asia/Kolkata"
   });
-  
   console.log('✅ Daily tips scheduled for 8:00 AM every day');
   
-  // ✅ SCHEDULED NOTIFICATIONS - Check every 15 minutes
-  // Pattern: '*/15 * * * *' means "Every 15 minutes"
+  // ✅ PRE-THERAPY NOTIFICATIONS - Every 6 hours
+  cron.schedule('0 */6 * * *', () => {
+    console.log('🔔 Pre-therapy notifications cron triggered');
+    sendPreTherapyNotifications();
+  });
+  console.log('✅ Pre-therapy notifications check every 6 hours');
+  
+  // ✅ POST-THERAPY NOTIFICATIONS - Every hour
+  cron.schedule('0 * * * *', () => {
+    console.log('🔔 Post-therapy notifications cron triggered');
+    sendPostTherapyNotifications();
+  });
+  console.log('✅ Post-therapy notifications check every hour');
+  
+  // ✅ SCHEDULED NOTIFICATIONS - Every 15 minutes
   cron.schedule('*/15 * * * *', () => {
     sendScheduledNotifications();
   });
-  
   console.log('✅ Scheduled notifications check every 15 minutes');
   
-  // ✅ FOR TESTING: Uncomment to send daily tips every minute
+  // ✅ FOR TESTING: Uncomment to run checks every minute
   // cron.schedule('* * * * *', () => {
-  //   console.log('🧪 TEST: Sending daily tips (every minute)');
-  //   sendDailyTipsToAllPatients();
+  //   console.log('🧪 TEST: Running all notification checks (every minute)');
+  //   sendPreTherapyNotifications();
+  //   sendPostTherapyNotifications();
+  //   sendScheduledNotifications();
   // });
   
   console.log('⏰ All cron jobs initialized successfully!\n');
 }
 
-// Manual trigger function (for testing or admin trigger)
+// Manual trigger functions (for testing or admin)
 async function manualSendDailyTips() {
   console.log('🔧 Manual daily tips trigger activated');
   await sendDailyTipsToAllPatients();
 }
 
+async function manualSendPreTherapy() {
+  console.log('🔧 Manual pre-therapy notifications trigger activated');
+  await sendPreTherapyNotifications();
+}
+
+async function manualSendPostTherapy() {
+  console.log('🔧 Manual post-therapy notifications trigger activated');
+  await sendPostTherapyNotifications();
+}
+
 module.exports = {
   initializeCronJobs,
   sendDailyTipsToAllPatients,
+  sendPreTherapyNotifications,
+  sendPostTherapyNotifications,
   sendScheduledNotifications,
-  manualSendDailyTips
+  manualSendDailyTips,
+  manualSendPreTherapy,
+  manualSendPostTherapy
 };

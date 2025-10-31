@@ -1,4 +1,4 @@
-// server.js or index.js - WITH CRON JOBS AND ENHANCED CONFIG
+// server.js or app.js - FIXED UPLOADS PATH HANDLING
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -10,7 +10,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 // ✅ Import cron jobs and email service functions
-const { initializeCronJobs, manualSendDailyTips } = require('./services/cronJobs');
+const { initializeCronJobs, manualSendDailyTips, manualSendPreTherapy, manualSendPostTherapy } = require('./services/cronJobs');
 const { verifyEmailConfig } = require('./services/emailService');
 
 // Create express app & server (required for socket.io)
@@ -25,7 +25,6 @@ app.use(helmet({
 }));
 
 // ------------------- CORS ------------------- //
-// Use CLIENT_URL from replacement, but maintain original's allowedOrigins logic for robustness
 const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || [process.env.CLIENT_URL || 'http://localhost:3000'];
 app.use(cors({
   origin: function (origin, callback) {
@@ -35,7 +34,7 @@ app.use(cors({
     else callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // Ensure all necessary methods are allowed
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
 }));
 
 // ------------------- RATE LIMIT ------------------- //
@@ -52,12 +51,27 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Static files BEFORE routes
+// ✅✅✅ CRITICAL FIX: Serve static files at BOTH /uploads AND /api/uploads
+// This fixes the "route does not exist" error for patient documents
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   }
 }));
+
+// ✅ ALSO serve at /api/uploads to handle legacy paths
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
+
+console.log('✅ Static files served at:');
+console.log('   - /uploads');
+console.log('   - /api/uploads');
+console.log('   Upload directory:', path.join(__dirname, 'uploads'));
 
 // ------------------- SOCKET.IO ------------------- //
 const io = new Server(server, {
@@ -71,7 +85,6 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('🟢 Client connected:', socket.id);
 
-  // Maintain original event listeners
   socket.on('procedureUpdated', (data) => io.emit('procedureUpdated', data));
   socket.on('vitalsUpdated', (data) => io.emit('vitalsUpdated', data));
   socket.on('feedbackUpdated', (data) => io.emit('feedbackUpdated', data));
@@ -83,12 +96,12 @@ io.on('connection', (socket) => {
   });
 });
 
-app.set('io', io); // Make io accessible to routes
+app.set('io', io);
 
 // ------------------- ROUTE IMPORTS ------------------- //
 let authRoutes, adminRoutes, usersRoutes, roomsRoutes, patientRoutes;
 let prescriptionRoutes, therapySessionRoutes, procedureRoutes, notificationRoutes;
-let appointmentRoutes; // <-- Declared here
+let appointmentRoutes;
 
 try {
   authRoutes = require('./routes/auth');
@@ -99,7 +112,8 @@ try {
   prescriptionRoutes = require('./routes/Prescriptions');
   therapySessionRoutes = require('./routes/therapySessionRoutes');
   procedureRoutes = require('./routes/procedureRoutes');
-  appointmentRoutes = require('./routes/appointmentRoutes'); // <-- Imported here
+  appointmentRoutes = require('./routes/appointmentRoutes');
+  
   try {
     notificationRoutes = require('./routes/notificationRoutes');
     console.log('✅ Notification routes loaded');
@@ -126,7 +140,8 @@ app.get('/', (req, res) => {
       therapySessions: '/api/therapy-sessions',
       procedures: '/api/procedures',
       notifications: '/api/notifications',
-      appointments: '/api/appointments', // <-- Added
+      appointments: '/api/appointments',
+      uploads: '/uploads (or /api/uploads)',
     },
   });
 });
@@ -136,17 +151,17 @@ app.get('/health', (req, res) => {
     status: 'OK',
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     timestamp: new Date().toISOString(),
-    cronJobsActive: true, // Assuming cron jobs are initialized successfully
+    cronJobsActive: true,
+    uploadsPath: path.join(__dirname, 'uploads'),
   });
 });
 
-// ✅ Manual trigger endpoint for testing daily tips (from replacement code)
+// ✅ Manual trigger endpoints for testing notifications
 app.post('/api/admin/send-daily-tips-now', async (req, res) => {
   try {
-    // Simple check to prevent public access - production would require full auth
     if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
-        await manualSendDailyTips();
-        return res.json({ message: 'Daily tips sent successfully (Manual Trigger)!' });
+      await manualSendDailyTips();
+      return res.json({ message: 'Daily tips sent successfully (Manual Trigger)!' });
     }
     res.status(403).json({ error: 'Forbidden', message: 'This endpoint is for development/admin use only.' });
   } catch (err) {
@@ -155,6 +170,25 @@ app.post('/api/admin/send-daily-tips-now', async (req, res) => {
   }
 });
 
+app.post('/api/admin/send-pre-therapy-now', async (req, res) => {
+  try {
+    await manualSendPreTherapy();
+    res.json({ message: 'Pre-therapy notifications sent!' });
+  } catch (err) {
+    console.error('Manual Pre-Therapy Error:', err);
+    res.status(500).json({ error: 'Failed to send pre-therapy notifications', details: err.message });
+  }
+});
+
+app.post('/api/admin/send-post-therapy-now', async (req, res) => {
+  try {
+    await manualSendPostTherapy();
+    res.json({ message: 'Post-therapy notifications sent!' });
+  } catch (err) {
+    console.error('Manual Post-Therapy Error:', err);
+    res.status(500).json({ error: 'Failed to send post-therapy notifications', details: err.message });
+  }
+});
 
 // ✅ Mount routes in correct order
 if (authRoutes) {
@@ -167,7 +201,6 @@ if (patientRoutes) {
   console.log('✅ Patient routes mounted at /api/patients');
 }
 
-// ✅ CRITICAL: Prescriptions BEFORE admin
 if (prescriptionRoutes) {
   app.use('/api/prescriptions', prescriptionRoutes);
   console.log('✅ Prescription routes mounted at /api/prescriptions');
@@ -189,8 +222,8 @@ if (notificationRoutes) {
 }
 
 if (appointmentRoutes) {
-  app.use('/api/appointments', appointmentRoutes); // <-- Mounted here
-  console.log('✅ Appointment routes mounted at /api/appointments'); // <-- Console log
+  app.use('/api/appointments', appointmentRoutes);
+  console.log('✅ Appointment routes mounted at /api/appointments');
 }
 
 if (adminRoutes) {
@@ -223,10 +256,8 @@ try {
   console.log('⚠️ Admin therapist routes not found');
 }
 
+// ------------------- DEBUG ROUTES ------------------- //
 
-// ------------------- DEBUG ROUTES (MAINTAINED) ------------------- //
-
-// All registered routes
 app.get('/api/test/routes', (req, res) => {
   try {
     const routes = [];
@@ -244,17 +275,16 @@ app.get('/api/test/routes', (req, res) => {
           .replace('(?=\\/|$)', '')
           .replace(/\\\//g, '/');
         
-        // Exclude internal middleware like logger/helmet
-        if (routerPath.startsWith('/api')) { 
-            middleware.handle.stack.forEach(handler => {
-              if (handler.route) {
-                const methods = Object.keys(handler.route.methods);
-                routes.push({
-                  method: methods[0].toUpperCase(),
-                  path: routerPath + handler.route.path
-                });
-              }
-            });
+        if (routerPath.startsWith('/api') || routerPath.startsWith('/uploads')) { 
+          middleware.handle.stack.forEach(handler => {
+            if (handler.route) {
+              const methods = Object.keys(handler.route.methods);
+              routes.push({
+                method: methods[0].toUpperCase(),
+                path: routerPath + handler.route.path
+              });
+            }
+          });
         }
       }
     });
@@ -263,6 +293,7 @@ app.get('/api/test/routes', (req, res) => {
       message: 'All registered routes',
       totalRoutes: routes.length,
       routes: routes.sort((a, b) => a.path.localeCompare(b.path)),
+      staticPaths: ['/uploads', '/api/uploads'],
       prescriptionRoutes: routes.filter(r => r.path.includes('prescription'))
     });
   } catch (err) {
@@ -270,7 +301,6 @@ app.get('/api/test/routes', (req, res) => {
   }
 });
 
-// Test therapy sessions model
 app.get('/api/test/therapy-sessions', async (req, res) => {
   try {
     const TherapySession = require('./models/TherapySession');
@@ -284,22 +314,20 @@ app.get('/api/test/therapy-sessions', async (req, res) => {
   }
 });
 
-// Test all models count
 app.get('/api/test/models', async (req, res) => {
   try {
     const User = require('./models/User');
     const TherapySession = require('./models/TherapySession');
     const ProcedureSession = require('./models/ProcedureSession');
     const Prescription = require('./models/Prescription');
-    const Appointment = require('./models/Appointment'); // <-- Added for test
-    
+    const Appointment = require('./models/Appointment');
 
     const [users, sessions, procedures, prescriptions, appointments] = await Promise.all([
       User.countDocuments(),
       TherapySession.countDocuments(),
       ProcedureSession.countDocuments(),
       Prescription.countDocuments(),
-      Appointment.countDocuments(), // <-- Added for test
+      Appointment.countDocuments(),
     ]);
 
     res.json({
@@ -308,7 +336,7 @@ app.get('/api/test/models', async (req, res) => {
         therapySessions: sessions, 
         procedureSessions: procedures,
         prescriptions,
-        appointments, // <-- Added for test
+        appointments,
       },
       status: 'All models loaded',
     });
@@ -317,7 +345,6 @@ app.get('/api/test/models', async (req, res) => {
   }
 });
 
-// Test prescriptions list
 app.get('/api/test/prescriptions', async (req, res) => {
   try {
     const Prescription = require('./models/Prescription');
@@ -342,7 +369,6 @@ app.get('/api/test/prescriptions', async (req, res) => {
   }
 });
 
-// Direct test route for download
 app.get('/api/test/download/:id', async (req, res) => {
   try {
     const Prescription = require('./models/Prescription');
@@ -371,7 +397,6 @@ app.get('/api/test/download/:id', async (req, res) => {
   }
 });
 
-
 // ------------------- 404 + ERROR HANDLING ------------------- //
 
 // 404 Handler
@@ -390,9 +415,11 @@ app.use((req, res) => {
       '/api/therapy-sessions',
       '/api/procedures',
       '/api/notifications',
-      '/api/appointments', // <-- Added
+      '/api/appointments',
       '/api/test/routes',
-      '/api/health'
+      '/api/health',
+      '/uploads/* (static files)',
+      '/api/uploads/* (static files)'
     ],
   });
 });
@@ -416,39 +443,40 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/ayush-welln
   .then(async () => {
     console.log('✅ MongoDB Connected');
 
-    // ✅ Verify email configuration (Improved from replacement code)
     await verifyEmailConfig().catch(err => {
       console.log('⚠️ Email service not configured or failed to verify:', err.message);
     });
 
-    // ✅ Initialize cron jobs (From replacement code)
     console.log('\n⏰ Starting cron jobs initialization...');
     initializeCronJobs();
     console.log('✅ Cron jobs initialized\n');
   })
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-
 // ------------------- START SERVER ------------------- //
-const PORT = process.env.PORT || 5000; // Used 5000 from replacement as a common default
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log('');
   console.log('═══════════════════════════════════════════');
   console.log('🚀 AyurSutra API running on port', PORT);
   console.log('📍 API Base URL: http://localhost:' + PORT);
   console.log('⏰ Cron Jobs Status: Active');
+  console.log('📁 Static Files: /uploads & /api/uploads');
   console.log('═══════════════════════════════════════════');
   console.log('Available endpoints:');
-  console.log('  GET  / - API info');
-  console.log('  GET  /health - Health check');
-  console.log('  POST /api/admin/send-daily-tips-now - Manual Cron Test 🧪');
-  console.log('  GET  /api/test/routes - List all routes');
-  console.log('  GET  /api/test/prescriptions - Test prescriptions');
-  console.log('  POST /api/auth/login - Login');
-  console.log('  GET  /api/prescriptions/:id/download - Download ⬇️');
-  console.log('  POST /api/appointments - Book Appointment'); // <-- Added for clarity
-  console.log('  GET  /api/appointments - Get Patient Appointments'); // <-- Added for clarity
-  console.log('  PUT  /api/appointments/:id/cancel - Cancel Appointment'); // <-- Added for clarity
+  console.log('  GET  / - API info');
+  console.log('  GET  /health - Health check');
+  console.log('  POST /api/admin/send-daily-tips-now - Manual Daily Tips 🧪');
+  console.log('  POST /api/admin/send-pre-therapy-now - Manual Pre-Therapy 🧪');
+  console.log('  POST /api/admin/send-post-therapy-now - Manual Post-Therapy 🧪');
+  console.log('  GET  /api/test/routes - List all routes');
+  console.log('  GET  /api/test/prescriptions - Test prescriptions');
+  console.log('  POST /api/auth/login - Login');
+  console.log('  GET  /api/prescriptions/:id/download - Download ⬇️');
+  console.log('  POST /api/appointments - Book Appointment');
+  console.log('  GET  /api/appointments - Get Appointments');
+  console.log('  GET  /uploads/* - Static files (patient docs, prescriptions)');
+  console.log('  GET  /api/uploads/* - Static files (alternative path)');
   console.log('═══════════════════════════════════════════');
   console.log('');
 });

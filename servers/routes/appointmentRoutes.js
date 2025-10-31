@@ -1,8 +1,9 @@
-// servers/routes/appointmentRoutes.js - COMPLETE VERSION
+// servers/routes/appointmentRoutes.js - FIXED WITH DASHBOARD NOTIFICATIONS
 const express = require('express');
 const router = express.Router();
 const Appointment = require('../models/Appointment');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { sendEmail } = require('../services/emailService');
 const auth = require('../middleware/auth');
 
@@ -14,7 +15,7 @@ router.use(auth);
 // =====================
 router.get('/providers', async (req, res) => {
   try {
-    const { type } = req.query; // 'doctor' or 'therapist'
+    const { type } = req.query;
     
     const filter = { active: true };
     if (type) {
@@ -53,7 +54,6 @@ router.post('/', async (req, res) => {
       currentMedications,
       allergies,
       priority,
-      // ✅ NEW: Provider selection
       doctorId,
       therapistId
     } = req.body;
@@ -69,12 +69,11 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Therapy type is required for therapy appointments' });
     }
 
-    // ✅ Validate provider selection
     if (!doctorId && !therapistId) {
       return res.status(400).json({ error: 'Please select a doctor or therapist' });
     }
 
-    // ✅ Verify provider exists
+    // Verify provider exists
     const providerId = doctorId || therapistId;
     const providerRole = doctorId ? 'doctor' : 'therapist';
     
@@ -108,14 +107,71 @@ router.post('/', async (req, res) => {
 
     const appointment = await newAppointment.save();
     
-    // ✅ Populate before returning
+    // Populate before returning
     await appointment.populate('patientId', 'name email phone');
     await appointment.populate('doctorId', 'name email');
     await appointment.populate('therapistId', 'name email');
 
     console.log('✅ Appointment booked:', appointment._id);
 
-    // ✅ Send email notification to provider
+    // ✅ FIXED: Create dashboard notification for admin AND provider
+    try {
+      const patient = await User.findById(patientId);
+      
+      // Get all admins
+      const admins = await User.find({ role: 'admin', active: true });
+      
+      // Create notifications for each admin
+      for (const admin of admins) {
+        const adminNotification = new Notification({
+          userId: admin._id,
+          type: 'appointment-reminder',
+          title: `New Appointment Request`,
+          message: `${patient.name} has requested a ${appointmentType} appointment for ${new Date(preferredDate).toLocaleDateString()} at ${preferredTime}`,
+          channel: 'in-app',
+          scheduledFor: new Date(),
+          status: 'sent',
+          sentAt: new Date(),
+          metadata: {
+            appointmentId: appointment._id,
+            patientName: patient.name,
+            appointmentType: appointmentType,
+            therapyType: therapyType,
+            preferredDate: new Date(preferredDate).toLocaleDateString(),
+            preferredTime: preferredTime
+          }
+        });
+        await adminNotification.save();
+        console.log(`✅ Dashboard notification created for admin: ${admin.email}`);
+      }
+      
+      // Create notification for provider
+      const providerNotification = new Notification({
+        userId: provider._id,
+        type: 'appointment-reminder',
+        title: `New Appointment Assignment`,
+        message: `You have been assigned a new ${appointmentType} appointment with ${patient.name}`,
+        channel: 'in-app',
+        scheduledFor: new Date(),
+        status: 'sent',
+        sentAt: new Date(),
+        metadata: {
+          appointmentId: appointment._id,
+          patientName: patient.name,
+          appointmentType: appointmentType,
+          therapyType: therapyType,
+          preferredDate: new Date(preferredDate).toLocaleDateString(),
+          preferredTime: preferredTime
+        }
+      });
+      await providerNotification.save();
+      console.log(`✅ Dashboard notification created for provider: ${provider.email}`);
+      
+    } catch (notifErr) {
+      console.warn('⚠️ Dashboard notification creation failed:', notifErr.message);
+    }
+
+    // Send email notification to provider
     if (provider.email) {
       setImmediate(async () => {
         try {
@@ -127,7 +183,7 @@ router.post('/', async (req, res) => {
             appointmentDate: new Date(preferredDate).toLocaleDateString(),
             appointmentTime: preferredTime
           });
-          console.log('✅ Notification email sent to provider');
+          console.log('✅ Email sent to provider');
         } catch (emailErr) {
           console.warn('⚠️ Email notification failed:', emailErr.message);
         }
@@ -145,13 +201,13 @@ router.post('/', async (req, res) => {
 });
 
 // =====================
-// GET - Patient's appointments
+// GET - Appointments (Role-based filtering)
 // =====================
 router.get('/', async (req, res) => {
   try {
     let query = {};
     
-    // ✅ Role-based filtering
+    // Role-based filtering
     if (req.user.role === 'patient') {
       query.patientId = req.user._id;
     } else if (req.user.role === 'doctor') {
@@ -159,15 +215,16 @@ router.get('/', async (req, res) => {
     } else if (req.user.role === 'therapist') {
       query.therapistId = req.user._id;
     }
-    // Admin sees all
+    // ✅ Admin sees ALL appointments (no filter)
 
     const appointments = await Appointment.find(query)
       .populate('patientId', 'name email phone')
       .populate('doctorId', 'name email')
       .populate('therapistId', 'name email')
       .populate('roomId', 'name location')
-      .sort({ preferredDate: -1, preferredTime: -1 });
+      .sort({ createdAt: -1, preferredDate: -1 });
 
+    console.log(`✅ Fetched ${appointments.length} appointments for ${req.user.role}`);
     res.json(appointments);
   } catch (err) {
     console.error('❌ Fetch appointments error:', err);
@@ -176,28 +233,29 @@ router.get('/', async (req, res) => {
 });
 
 // =====================
-// PUT - Approve appointment (Doctor/Therapist)
+// PUT - Approve appointment (Doctor/Therapist/Admin)
 // =====================
 router.put('/:id/approve', async (req, res) => {
   try {
-    // ✅ Only doctor/therapist can approve
-    if (!['doctor', 'therapist'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Only doctors and therapists can approve appointments' });
-    }
-
     const { confirmedDate, confirmedTime, roomId, staffNotes } = req.body;
     
     const appointment = await Appointment.findById(req.params.id)
-      .populate('patientId', 'name email');
+      .populate('patientId', 'name email')
+      .populate('doctorId', 'name email')
+      .populate('therapistId', 'name email');
     
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // ✅ Verify this appointment is assigned to the logged-in provider
-    const providerId = req.user.role === 'doctor' ? appointment.doctorId : appointment.therapistId;
-    if (providerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: 'You can only approve your own appointments' });
+    // ✅ FIXED: Allow admin, doctor, or therapist to approve
+    const canApprove = 
+      req.user.role === 'admin' ||
+      (req.user.role === 'doctor' && appointment.doctorId?._id.toString() === req.user._id.toString()) ||
+      (req.user.role === 'therapist' && appointment.therapistId?._id.toString() === req.user._id.toString());
+    
+    if (!canApprove) {
+      return res.status(403).json({ error: 'You do not have permission to approve this appointment' });
     }
 
     if (appointment.status !== 'pending') {
@@ -215,14 +273,37 @@ router.put('/:id/approve', async (req, res) => {
 
     await appointment.save();
     
-    // ✅ Populate before returning
-    await appointment.populate('doctorId', 'name email');
-    await appointment.populate('therapistId', 'name email');
     await appointment.populate('roomId', 'name location');
 
     console.log('✅ Appointment approved:', appointment._id);
 
-    // ✅ Send confirmation email to patient
+    // ✅ Create dashboard notification for patient
+    try {
+      const patientNotification = new Notification({
+        userId: appointment.patientId._id,
+        type: 'appointment-reminder',
+        title: `Appointment Approved!`,
+        message: `Your ${appointment.appointmentType} appointment has been confirmed for ${new Date(appointment.confirmedDate).toLocaleDateString()} at ${appointment.confirmedTime}`,
+        channel: 'in-app',
+        scheduledFor: new Date(),
+        status: 'sent',
+        sentAt: new Date(),
+        metadata: {
+          appointmentId: appointment._id,
+          appointmentType: appointment.appointmentType,
+          therapyType: appointment.therapyType,
+          confirmedDate: new Date(appointment.confirmedDate).toLocaleDateString(),
+          confirmedTime: appointment.confirmedTime,
+          providerName: appointment.doctorId?.name || appointment.therapistId?.name
+        }
+      });
+      await patientNotification.save();
+      console.log('✅ Dashboard notification created for patient');
+    } catch (notifErr) {
+      console.warn('⚠️ Dashboard notification failed:', notifErr.message);
+    }
+
+    // Send confirmation email to patient
     if (appointment.patientId.email) {
       setImmediate(async () => {
         try {
@@ -231,7 +312,7 @@ router.put('/:id/approve', async (req, res) => {
             appointmentDate: new Date(appointment.confirmedDate).toLocaleDateString(),
             appointmentTime: appointment.confirmedTime,
             therapyType: appointment.therapyType || appointment.appointmentType,
-            location: 'Ayush Wellness Center' // Can be dynamic
+            location: 'Ayush Wellness Center'
           });
           console.log('✅ Confirmation email sent to patient');
         } catch (emailErr) {
@@ -248,15 +329,10 @@ router.put('/:id/approve', async (req, res) => {
 });
 
 // =====================
-// PUT - Reject appointment (Doctor/Therapist)
+// PUT - Reject appointment (Doctor/Therapist/Admin)
 // =====================
 router.put('/:id/reject', async (req, res) => {
   try {
-    // ✅ Only doctor/therapist can reject
-    if (!['doctor', 'therapist'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Only doctors and therapists can reject appointments' });
-    }
-
     const { rejectionReason } = req.body;
     
     if (!rejectionReason) {
@@ -270,10 +346,14 @@ router.put('/:id/reject', async (req, res) => {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // ✅ Verify this appointment is assigned to the logged-in provider
-    const providerId = req.user.role === 'doctor' ? appointment.doctorId : appointment.therapistId;
-    if (providerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: 'You can only reject your own appointments' });
+    // ✅ Allow admin, doctor, or therapist to reject
+    const canReject = 
+      req.user.role === 'admin' ||
+      (req.user.role === 'doctor' && appointment.doctorId?.toString() === req.user._id.toString()) ||
+      (req.user.role === 'therapist' && appointment.therapistId?.toString() === req.user._id.toString());
+    
+    if (!canReject) {
+      return res.status(403).json({ error: 'You do not have permission to reject this appointment' });
     }
 
     appointment.status = 'rejected';
@@ -285,7 +365,29 @@ router.put('/:id/reject', async (req, res) => {
 
     console.log('✅ Appointment rejected:', appointment._id);
 
-    // ✅ Send rejection email to patient
+    // ✅ Create dashboard notification for patient
+    try {
+      const patientNotification = new Notification({
+        userId: appointment.patientId._id,
+        type: 'appointment-reminder',
+        title: `Appointment Request Update`,
+        message: `Your appointment request has been declined. Reason: ${rejectionReason}`,
+        channel: 'in-app',
+        scheduledFor: new Date(),
+        status: 'sent',
+        sentAt: new Date(),
+        metadata: {
+          appointmentId: appointment._id,
+          rejectionReason: rejectionReason
+        }
+      });
+      await patientNotification.save();
+      console.log('✅ Dashboard notification created for patient');
+    } catch (notifErr) {
+      console.warn('⚠️ Dashboard notification failed:', notifErr.message);
+    }
+
+    // Send rejection email to patient
     if (appointment.patientId.email) {
       setImmediate(async () => {
         try {
@@ -339,7 +441,7 @@ router.put('/:id/cancel', async (req, res) => {
 
     console.log('✅ Appointment cancelled:', appointment._id);
 
-    // ✅ Notify provider
+    // Notify provider
     const provider = appointment.doctorId || appointment.therapistId;
     if (provider && provider.email) {
       setImmediate(async () => {
@@ -378,7 +480,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // ✅ Check access permissions
+    // Check access permissions
     const hasAccess = 
       req.user.role === 'admin' ||
       appointment.patientId._id.toString() === req.user._id.toString() ||

@@ -136,7 +136,8 @@ const emailTemplates = {
         <p style="margin-top:20px;">Stay healthy,<br><strong>Ayush Wellness Team</strong></p>
       </div>
     `,
-  }),'appointment-assignment': (data) => ({
+  }),
+  'appointment-assignment': (data) => ({
   subject: `New Appointment Assigned - ${data.patientName}`,
   html: `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

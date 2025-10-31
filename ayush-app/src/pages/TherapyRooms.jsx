@@ -46,20 +46,36 @@ const TherapyRooms = () => {
   });
   const [editingSlotIndex, setEditingSlotIndex] = useState(null);
 
-  // Fetch all rooms
+  // ✅ FIXED: Fetch rooms with proper error handling
   const fetchRooms = async () => {
     setLoading(true);
     setError("");
     try {
       const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
+      if (!token) {
+        setError("Authentication required. Please login.");
+        setLoading(false);
+        return;
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
+      
+      console.log('🏠 Fetching rooms with token...');
       const res = await API.get("/admin/rooms", { headers });
+      
       console.log("📋 Fetched rooms:", res.data);
       setRooms(res.data || []);
+      setError(""); // Clear any previous errors
     } catch (err) {
       console.error("❌ Failed to fetch rooms:", err);
-      setError(err.response?.data?.error || "Failed to fetch rooms");
+      
+      // ✅ FIXED: Better error handling without redirecting
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError("Authentication failed. Please logout and login again.");
+      } else {
+        setError(err.response?.data?.error || "Failed to fetch rooms");
+      }
     } finally {
       setLoading(false);
     }
@@ -91,6 +107,7 @@ const TherapyRooms = () => {
   const addOrUpdateSlot = () => {
     if (!slotForm.startTime || !slotForm.endTime) {
       setError("Please fill in start and end time");
+      setTimeout(() => setError(""), 2000);
       return;
     }
     
@@ -156,7 +173,7 @@ const TherapyRooms = () => {
     setShowModal(true);
   };
 
-  // Save room (create or update)
+  // ✅ FIXED: Save room with proper error handling
   const handleSave = async () => {
     setError("");
     setSuccess("");
@@ -168,7 +185,13 @@ const TherapyRooms = () => {
     
     try {
       const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      if (!token) {
+        setError("Authentication required. Please login.");
+        return;
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
       
       const payload = { 
         ...formData, 
@@ -188,12 +211,20 @@ const TherapyRooms = () => {
       
       setShowModal(false);
       fetchRooms();
+      
+      setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("❌ Error saving room:", err);
-      setError(err.response?.data?.error || "Failed to save room");
+      
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError("Authentication failed. Please logout and login again.");
+      } else {
+        setError(err.response?.data?.error || "Failed to save room");
+      }
     }
   };
 
+  // ✅ FIXED: Delete with proper error handling
   const handleDeleteRoom = async (id) => {
     if (!window.confirm("Are you sure you want to delete this room?")) return;
     
@@ -202,7 +233,13 @@ const TherapyRooms = () => {
     
     try {
       const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      if (!token) {
+        setError("Authentication required. Please login.");
+        return;
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
       
       await API.delete(`/admin/rooms/${id}`, { headers });
       setSuccess("Room deleted successfully!");
@@ -211,7 +248,12 @@ const TherapyRooms = () => {
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("❌ Failed to delete room:", err);
-      setError(err.response?.data?.error || "Failed to delete room");
+      
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError("Authentication failed. Please logout and login again.");
+      } else {
+        setError(err.response?.data?.error || "Failed to delete room");
+      }
     }
   };
 
@@ -224,8 +266,30 @@ const TherapyRooms = () => {
       >
         <Header title="Therapy Room Management" />
         <Container className="py-4">
-          {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
-          {success && <Alert variant="success" dismissible onClose={() => setSuccess("")}>{success}</Alert>}
+          {error && (
+            <Alert variant="danger" dismissible onClose={() => setError("")}>
+              <strong>Error:</strong> {error}
+              {error.includes("Authentication") && (
+                <div className="mt-2">
+                  <Button 
+                    variant="outline-danger" 
+                    size="sm"
+                    onClick={() => {
+                      localStorage.clear();
+                      window.location.href = "/";
+                    }}
+                  >
+                    Go to Login
+                  </Button>
+                </div>
+              )}
+            </Alert>
+          )}
+          {success && (
+            <Alert variant="success" dismissible onClose={() => setSuccess("")}>
+              {success}
+            </Alert>
+          )}
           
           <Card className="shadow-sm border-0 rounded-4">
             <Card.Body>
@@ -238,6 +302,7 @@ const TherapyRooms = () => {
                   variant="success"
                   className="rounded-pill d-flex align-items-center"
                   onClick={() => handleShowModal()}
+                  disabled={loading}
                 >
                   <PlusCircle className="me-2" /> Add Room
                 </Button>
